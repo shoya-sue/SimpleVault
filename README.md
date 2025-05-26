@@ -60,3 +60,9 @@ SimpleVault/
 * Anchorを利用したSolanaスマートコントラクト開発フローを把握する。
 * Rustでのスマートコントラクト記述に慣れる。
 * 実際のSolanaネットワーク（devnet）上でプログラムの動作を確認できるようになる。
+
+#### 参考資料
+- https://learn.blueshift.gg/en/courses/anchor-vault/lesson
+- https://www.anchor-lang.com/docs
+- https://solana.com/ja/docs/intro/installation
+- https://note.com/standenglish/n/n5bc42d6fd5e4
