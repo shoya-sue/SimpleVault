@@ -8,20 +8,39 @@
   --background-end-rgb: 255, 255, 255;
 }
 
+/* デフォルトのダークモード設定を無効化し、classベースに切り替え */
 @media (prefers-color-scheme: dark) {
   :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
+    --foreground-rgb: 0, 0, 0;
+    --background-start-rgb: 214, 219, 220;
+    --background-end-rgb: 255, 255, 255;
   }
+}
+
+/* classベースのダークモード */
+.dark {
+  --foreground-rgb: 255, 255, 255;
+  --background-start-rgb: 26, 26, 26;
+  --background-end-rgb: 26, 26, 26;
 }
 
 body {
   color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+  background: rgb(var(--background-start-rgb));
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* ダークモード対応のカードスタイル */
+.dark .bg-white {
+  @apply bg-dark-card text-dark-text;
+}
+
+/* ダークモード時のボーダー */
+.dark .border {
+  @apply border-dark-border;
+}
+
+/* スムーズなトランジション */
+.transition-colors {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
 } 
