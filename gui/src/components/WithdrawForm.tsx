@@ -1,70 +1,163 @@
-import { FC, useState } from 'react';
-import { useVault } from '../hooks/useVault';
+import React, { useState, useEffect } from 'react';
+import { useConnection, useWallet } from '@solana/wallet-adapter-react';
+import { useVaultProgram } from '../hooks/useVaultProgram';
+import { formatSol } from '../utils/format';
+import ErrorMessage from './ErrorMessage';
+import LoadingIndicator from './LoadingIndicator';
 
-export const WithdrawForm: FC = () => {
+/**
+ * 引き出しフォームコンポーネント
+ */
+export const WithdrawForm: React.FC = () => {
+  const { publicKey } = useWallet();
+  const { connection } = useConnection();
+  const { withdraw, getVaultBalance, loading } = useVaultProgram();
+
   const [amount, setAmount] = useState<string>('');
-  const { withdraw, balance, loading, error } = useVault();
+  const [vaultBalance, setVaultBalance] = useState<number>(0);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!amount || isNaN(parseFloat(amount))) return;
+  // Vault残高の取得
+  const fetchVaultBalance = async () => {
+    if (!publicKey) return;
+    const balance = await getVaultBalance();
+    setVaultBalance(balance);
+  };
+
+  // ウォレット接続時に残高を取得
+  useEffect(() => {
+    if (publicKey) {
+      fetchVaultBalance();
+      const interval = setInterval(fetchVaultBalance, 5000);
+      return () => clearInterval(interval);
+    } else {
+      setVaultBalance(0);
+    }
+  }, [publicKey]);
+
+  // 入力値の検証
+  const validateInput = (value: string): boolean => {
+    // 空文字列や非数値を拒否
+    if (!value || isNaN(parseFloat(value))) return false;
     
-    const withdrawAmount = parseFloat(amount);
-    if (withdrawAmount > balance) {
-      alert('Withdrawal amount exceeds balance');
+    // 残高を超える金額を拒否
+    const numValue = parseFloat(value);
+    return numValue > 0 && numValue <= vaultBalance;
+  };
+
+  // 引き出し処理
+  const handleWithdraw = async () => {
+    if (!publicKey) {
+      setErrorMessage('ウォレットを接続してください');
       return;
     }
-    
-    withdraw(withdrawAmount);
-    setAmount('');
+
+    if (!validateInput(amount)) {
+      setErrorMessage('有効な金額を入力してください（残高以下の額）');
+      return;
+    }
+
+    setErrorMessage(null);
+    setStatusMessage('引き出し処理中...');
+
+    try {
+      // lamportsに変換
+      const lamports = parseFloat(amount) * 1000000000;
+      const result = await withdraw(lamports);
+      
+      if (result) {
+        setStatusMessage(`${amount} SOLの引き出しに成功しました`);
+        setAmount(''); // 入力フィールドをクリア
+        fetchVaultBalance(); // 残高を更新
+      } else {
+        setErrorMessage('引き出しに失敗しました');
+      }
+    } catch (err) {
+      console.error('Withdrawal error:', err);
+      setErrorMessage(`引き出し中にエラーが発生しました: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setTimeout(() => setStatusMessage(null), 5000); // 5秒後にステータスメッセージを消す
+    }
+  };
+
+  // 最大額をセット
+  const setMaxAmount = () => {
+    if (vaultBalance > 0) {
+      setAmount(vaultBalance.toFixed(4));
+    } else {
+      setErrorMessage('Vault残高がありません');
+    }
   };
 
   return (
-    <div className="w-full max-w-md bg-white p-6 rounded-lg shadow-md">
-      <h2 className="text-2xl font-bold text-gray-800 mb-4">Withdraw Tokens</h2>
+    <div className="bg-white dark:bg-dark-card shadow-md rounded-lg p-4 sm:p-6">
+      <h2 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-dark-text mb-4">SOLを引き出す</h2>
       
+      {/* エラーメッセージ */}
+      {errorMessage && (
+        <ErrorMessage
+          message={errorMessage}
+          type="error"
+          onClose={() => setErrorMessage(null)}
+        />
+      )}
+
+      {/* ステータスメッセージ */}
+      {statusMessage && (
+        <ErrorMessage
+          message={statusMessage}
+          type="success"
+          onClose={() => setStatusMessage(null)}
+        />
+      )}
+
       <div className="mb-4">
-        <p className="text-sm text-gray-600">
-          Available Balance: <span className="font-semibold">{balance}</span>
-        </p>
-      </div>
-      
-      <form onSubmit={handleSubmit}>
-        <div className="mb-4">
-          <label htmlFor="withdraw-amount" className="block text-sm font-medium text-gray-700 mb-1">
-            Amount
+        <div className="flex justify-between items-center mb-2">
+          <label className="block text-gray-700 dark:text-gray-300 text-sm font-bold">
+            引き出し金額 (SOL)
           </label>
+          <span className="text-sm text-gray-600 dark:text-gray-400">
+            Vault残高: {formatSol(vaultBalance)} SOL
+          </span>
+        </div>
+        <div className="flex items-center">
           <input
-            id="withdraw-amount"
-            type="number"
-            min="0"
-            max={balance.toString()}
-            step="0.000000001"
-            placeholder="0.0"
+            type="text"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-solana-purple"
-            required
+            placeholder="0.0"
+            className="shadow appearance-none border dark:border-gray-700 rounded-l w-full py-2 px-3 text-gray-700 dark:text-gray-300 dark:bg-gray-800 leading-tight focus:outline-none focus:shadow-outline"
+            disabled={!publicKey || loading}
           />
+          <button
+            onClick={setMaxAmount}
+            className="bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-r border-t border-r border-b dark:border-gray-600"
+            disabled={!publicKey || loading}
+          >
+            最大
+          </button>
         </div>
-        
-        <button
-          type="submit"
-          disabled={loading || !amount || parseFloat(amount) > balance}
-          className={`w-full py-2 px-4 rounded-md font-medium text-white 
-            ${loading || !amount || parseFloat(amount) > balance
-              ? 'bg-gray-400 cursor-not-allowed' 
-              : 'bg-solana-purple hover:bg-opacity-90'}`}
-        >
-          {loading ? 'Processing...' : 'Withdraw'}
-        </button>
-      </form>
-      
-      {error && (
-        <div className="mt-4 text-red-500 text-sm">
-          {error}
-        </div>
-      )}
+      </div>
+
+      <button
+        onClick={handleWithdraw}
+        disabled={!publicKey || loading || !validateInput(amount)}
+        className={`w-full py-2 px-4 rounded font-bold transition-colors ${
+          !publicKey || loading || !validateInput(amount)
+            ? 'bg-gray-300 text-gray-500 dark:bg-gray-700 dark:text-gray-500 cursor-not-allowed'
+            : 'bg-solana-purple hover:bg-purple-700 text-white'
+        }`}
+      >
+        {loading ? (
+          <div className="flex items-center justify-center">
+            <LoadingIndicator size="sm" color="text-white" />
+            <span className="ml-2">引き出し中...</span>
+          </div>
+        ) : (
+          '引き出し'
+        )}
+      </button>
     </div>
   );
 }; 

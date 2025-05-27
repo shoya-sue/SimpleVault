@@ -1,11 +1,24 @@
-// SimpleVaultプログラムID（Anchor.tomlから取得）
-export const PROGRAM_ID = 'GGCcGkcUoT1oCbPxkHrxpHDkLDrb9TYN8Hx2ffAEYLaQ';
+import { clusterApiUrl } from '@solana/web3.js';
 
-// トークン定数
-export const TOKEN_DECIMALS = 9; // SOLのデシマル数
+/**
+ * プログラムID (スマートコントラクトのアドレス)
+ */
+export const PROGRAM_ID = 'Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS'; // 開発用のダミーID
+
+/**
+ * クラスタURL (Solanaネットワーク)
+ */
+export const CLUSTER_URL = clusterApiUrl('devnet');
+
+/**
+ * トークンデシマル値
+ */
+export const TOKEN_DECIMALS = 9;
+
+/**
+ * トランザクション確認レベル
+ */
+export const COMMITMENT = 'confirmed';
 
 // テスト用のMINTアドレス (devnet上のダミートークン)
-export const TEST_MINT_ADDRESS = 'So11111111111111111111111111111111111111112'; // Wrapped SOL
-
-// クラスター情報
-export const CLUSTER_URL = 'https://api.devnet.solana.com'; 
+export const TEST_MINT_ADDRESS = 'So11111111111111111111111111111111111111112'; // Wrapped SOL 

@@ -1,51 +1,110 @@
-import { FC, useEffect } from 'react';
-import { useVault } from '../hooks/useVault';
-import { TOKEN_DECIMALS } from '../utils/constants';
+import React, { useState, useEffect } from 'react';
+import { useConnection, useWallet } from '@solana/wallet-adapter-react';
+import { useVaultProgram } from '../hooks/useVaultProgram';
+import { formatSol } from '../utils/format';
+import ErrorMessage from './ErrorMessage';
+import LoadingIndicator from './LoadingIndicator';
 
-export const BalanceDisplay: FC = () => {
-  const { balance, fetchBalance, loading, error, isConnected } = useVault();
+/**
+ * 残高表示コンポーネント
+ */
+export const BalanceDisplay: React.FC = () => {
+  const { publicKey } = useWallet();
+  const { connection } = useConnection();
+  const { getVaultBalance } = useVaultProgram();
 
-  useEffect(() => {
-    if (isConnected) {
-      fetchBalance();
+  const [walletBalance, setWalletBalance] = useState<number>(0);
+  const [vaultBalance, setVaultBalance] = useState<number>(0);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // 残高を取得する関数
+  const fetchBalances = async () => {
+    if (!publicKey) {
+      setWalletBalance(0);
+      setVaultBalance(0);
+      return;
     }
-  }, [isConnected, fetchBalance]);
 
-  // トークンの小数点以下の表示を整形
-  const formattedBalance = balance / Math.pow(10, TOKEN_DECIMALS);
+    setLoading(true);
+    try {
+      // ウォレット残高の取得
+      const walletBal = await connection.getBalance(publicKey);
+      setWalletBalance(walletBal / 1000000000); // lamportsからSOLに変換
+
+      // Vault残高の取得
+      const vaultBal = await getVaultBalance();
+      setVaultBalance(vaultBal);
+    } catch (err) {
+      console.error('Failed to fetch balances:', err);
+      setErrorMessage('残高の取得に失敗しました');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ウォレット接続状態の変更を検知
+  useEffect(() => {
+    fetchBalances();
+    
+    // 5秒ごとに残高を更新
+    const interval = setInterval(fetchBalances, 5000);
+    return () => clearInterval(interval);
+  }, [publicKey, connection]);
+
+  // 総残高の計算
+  const totalBalance = walletBalance + vaultBalance;
 
   return (
-    <div className="w-full max-w-md bg-white p-6 rounded-lg shadow-md">
-      <h2 className="text-2xl font-bold text-gray-800 mb-4">Your Vault Balance</h2>
+    <div className="bg-white dark:bg-dark-card shadow-md rounded-lg p-4 sm:p-6">
+      <h2 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-dark-text mb-4">残高</h2>
       
-      {isConnected ? (
-        <div className="text-center">
-          <div className="text-4xl font-bold text-solana-purple mb-2">
-            {loading ? (
-              <span className="text-gray-400">Loading...</span>
-            ) : (
-              <span>{formattedBalance.toFixed(TOKEN_DECIMALS)}</span>
-            )}
-          </div>
-          <p className="text-sm text-gray-600">Tokens in vault</p>
-          
-          <button
-            onClick={fetchBalance}
-            disabled={loading}
-            className="mt-4 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-gray-800 text-sm"
-          >
-            Refresh Balance
-          </button>
+      {/* エラーメッセージ */}
+      {errorMessage && (
+        <ErrorMessage
+          message={errorMessage}
+          type="error"
+          onClose={() => setErrorMessage(null)}
+        />
+      )}
+
+      {loading ? (
+        <div className="py-4 flex justify-center">
+          <LoadingIndicator text="残高を読み込み中..." />
         </div>
       ) : (
-        <div className="text-center text-gray-500">
-          Connect your wallet to view balance
+        <div className="space-y-4">
+          {/* 総残高 */}
+          <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+            <p className="text-sm text-gray-500 dark:text-gray-400">総残高</p>
+            <p className="text-2xl font-bold text-gray-900 dark:text-white">
+              {formatSol(totalBalance)} SOL
+            </p>
+          </div>
+
+          {/* ウォレット残高 */}
+          <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+            <p className="text-sm text-gray-500 dark:text-gray-400">ウォレット残高</p>
+            <p className="text-xl font-semibold text-gray-800 dark:text-gray-200">
+              {formatSol(walletBalance)} SOL
+            </p>
+          </div>
+
+          {/* Vault残高 */}
+          <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+            <p className="text-sm text-gray-500 dark:text-gray-400">Vault残高</p>
+            <p className="text-xl font-semibold text-gray-800 dark:text-gray-200">
+              {formatSol(vaultBalance)} SOL
+            </p>
+          </div>
         </div>
       )}
-      
-      {error && (
-        <div className="mt-4 text-red-500 text-sm">
-          {error}
+
+      {!publicKey && (
+        <div className="mt-4 text-center p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+          <p className="text-gray-500 dark:text-gray-400">
+            ウォレットを接続して残高を表示
+          </p>
         </div>
       )}
     </div>
