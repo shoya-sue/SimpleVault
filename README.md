@@ -89,45 +89,79 @@ SimpleVault/
 
 # SimpleVault
 
-Solanaブロックチェーン上で動作するSPLトークンのための金庫（バリデーション）システムです。
+SimpleVaultは、Solanaブロックチェーン上で動作するSPLトークン管理アプリケーションです。このアプリケーションを使用すると、SOLの預け入れ・引き出し、SPLトークンのミント、残高確認、トランザクション履歴の表示が可能です。
 
-## プロジェクト構成
+## 主な機能
 
-- `smart_contract/` - Solanaスマートコントラクト（Anchor Framework）
-- `gui/` - フロントエンドアプリケーション
-- `docs/` - 詳細なドキュメント
+- **SOL預け入れ/引き出し**: ウォレットからVaultへのSOL送金と引き出し
+- **SPLトークンミント**: 新しいSPLトークンの作成とミント
+- **トランザクション履歴**: Vaultに関連するトランザクション履歴の表示
+- **自動トークンアカウント作成**: 初回利用時にトークンアカウントを自動作成
+- **ダークモード対応**: ライト/ダークモードの切り替え
+- **レスポンシブデザイン**: モバイル端末からも快適に利用可能
 
-## プロジェクトのクリーンアップ
+## 技術スタック
 
-プロジェクトには以下の不要なディレクトリが含まれています：
+- **フロントエンド**: Next.js + React + TypeScript
+- **スタイリング**: TailwindCSS
+- **ブロックチェーン接続**: Solana Web3.js, Wallet Adapter
+- **テスト**: Jest + React Testing Library
 
-- `smart_contract/simple_vault/` - 内容はすべて `smart_contract/` に移動済み
-- `smart_contract/app/` - 空のディレクトリ
-- `smart_contract/node_modules/` - ビルド時に再生成されるため削除可能
-- `smart_contract/target/` - ビルド成果物のため削除可能
+## 開発環境のセットアップ
 
-### Windows環境でのクリーンアップ
+### 前提条件
 
-```batch
-rmdir /s /q "smart_contract\simple_vault"
-rmdir /s /q "smart_contract\app"
-rmdir /s /q "smart_contract\node_modules"
-rmdir /s /q "smart_contract\target"
+- Node.js 16.x以上
+- npm 7.x以上
+- Solanaウォレット (Phantom, Solflare等)
+
+### インストール
+
+1. リポジトリをクローン:
+```bash
+git clone https://github.com/yourusername/SimpleVault.git
+cd SimpleVault
 ```
 
-### Unix環境でのクリーンアップ
+2. 依存関係をインストール:
+```bash
+# GUIの依存関係をインストール
+cd gui
+npm install
+```
+
+3. 開発サーバーを起動:
+```bash
+npm run dev
+```
+
+4. ブラウザで http://localhost:3000 にアクセス
+
+## テスト
+
+単体テストを実行するには:
 
 ```bash
-rm -rf smart_contract/simple_vault
-rm -rf smart_contract/app
-rm -rf smart_contract/node_modules
-rm -rf smart_contract/target
+cd gui
+npm test
 ```
 
-## スマートコントラクト
+## ビルドと本番環境へのデプロイ
 
-詳細な情報は [smart_contract/README.md](smart_contract/README.md) を参照してください。
+静的ファイルをビルドするには:
 
-## フロントエンド
+```bash
+cd gui
+npm run build
+```
 
-詳細な情報は [gui/README.md](gui/README.md) を参照してください。
+ビルドされたファイルは `gui/out` ディレクトリに出力されます。
+
+## ライセンス
+
+MIT
+
+## 謝辞
+
+- Solanaチームとコミュニティ
+- 各種ライブラリの開発者
