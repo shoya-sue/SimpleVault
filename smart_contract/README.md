@@ -1,53 +1,126 @@
-# SimpleVault スマートコントラクト
+# SimpleVault
 
-このディレクトリは、Anchorを用いたSolanaスマートコントラクト（SimpleVault）のソースコードと設計資料を格納します。
+SimpleVaultはSolanaブロックチェーン上で動作するSPLトークンのためのシンプルな金庫（バリデーション）システムです。ユーザーはトークンを預け入れ、引き出し、残高を確認することができます。
 
-## 目的
+## 機能
 
-- SPLトークンの預け入れ（Deposit）・引き出し（Withdraw）・残高確認（Query Balance）ができるVaultを実装する。
+- **初期化**: 新しい金庫アカウントの作成
+- **預け入れ**: SPLトークンを金庫に預ける
+- **引き出し**: SPLトークンを金庫から引き出す
+- **残高確認**: 金庫内のトークン残高を確認
 
-## 主な機能
+## プロジェクト構成
 
-1. ユーザーは任意のSPLトークンをVaultに預け入れできる。
-2. 預け入れたトークンはユーザーごとに管理される。
-3. ユーザーは自身の預け入れたトークンを引き出せる。
-4. ユーザーは自身のVault残高を確認できる。
+```
+simple_vault/
+├── Anchor.toml          # Anchorの設定ファイル
+├── Cargo.toml           # ワークスペースの設定
+├── programs/            # プログラムコード
+│   └── simple_vault/    # Solanaプログラム
+│       ├── Cargo.toml   # プログラムの依存関係
+│       └── src/         # ソースコード
+│           └── lib.rs   # プログラムロジック
+└── tests/               # テストスクリプト
+    └── simple_vault.js  # テストコード
+```
 
-## 技術スタック
+## 開発環境のセットアップ
 
+### 必要なツール
+
+- Solana CLI
 - Rust
-- Anchorフレームワーク
-- Solana devnet
+- Node.js & npm/yarn
+- Anchor Framework
 
-## ディレクトリ構成
+### インストール手順
 
-```text
-smart_contract/
-├── README.md
-├── Dockerfile
-├── docker-compose.yml
-├── programs/
-│   └── simple_vault/
-│       ├── Cargo.toml
-│       └── src/
-│           └── lib.rs
+1. **Solana CLI**のインストール:
+   ```
+   sh -c "$(curl -sSfL https://release.solana.com/v1.17.0/install)"
+   ```
+
+2. **Rust**のインストール:
+   ```
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+   ```
+
+3. **Anchor Framework**のインストール:
+   ```
+   npm install -g @coral-xyz/anchor-cli
+   ```
+
+## ビルド手順
+
+1. プロジェクトのルートディレクトリで以下のコマンドを実行:
+   ```
+   yarn install
+   anchor build
+   ```
+
+## テスト実行
+
+1. ローカルのSolanaバリデータを起動:
+   ```
+   solana-test-validator
+   ```
+
+2. 別のターミナルでテストを実行:
+   ```
+   anchor test
+   ```
+
+## デプロイ手順
+
+1. Solanaネットワークを設定:
+   ```
+   solana config set --url <ネットワークURL>
+   ```
+
+2. デプロイを実行:
+   ```
+   anchor deploy
+   ```
+
+## 使用例
+
+```javascript
+// プログラム初期化
+await program.methods
+  .initialize()
+  .accounts({
+    // 必要なアカウント情報
+  })
+  .signers([ownerKeypair])
+  .rpc();
+
+// トークン預け入れ
+await program.methods
+  .deposit(new BN(1000000))
+  .accounts({
+    // 必要なアカウント情報
+  })
+  .signers([ownerKeypair])
+  .rpc();
+
+// 残高確認
+const balance = await program.methods
+  .queryBalance()
+  .accounts({
+    // 必要なアカウント情報
+  })
+  .view();
+
+// トークン引き出し
+await program.methods
+  .withdraw(new BN(500000))
+  .accounts({
+    // 必要なアカウント情報
+  })
+  .signers([ownerKeypair])
+  .rpc();
 ```
 
-## Dockerによる開発環境構築
+## ライセンス
 
-1. `Dockerfile` と `docker-compose.yml` を用意しています。
-2. 以下のコマンドでAnchor開発環境を起動できます。
-
-```sh
-docker-compose up --build
-```
-
-- プロジェクトルートが `/workdir` にマウントされます。
-- Solana CLI, Anchor, Rustが利用可能です。
-- GUI（フロントエンド）は別コンテナで起動してください。
-
-## 参考
-
-- Anchor公式ドキュメント
-- SPL Tokenライブラリ
-- 詳細な設計・仕様は `docs/` 配下の資料も参照してください。
+MITライセンス
