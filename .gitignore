@@ -1,1 +1,6 @@
 /smart_contract/simple_vault/
+
+# Build directories
+/smart_contract/target/
+/smart_contract/node_modules/
+
