@@ -1,2 +1,1 @@
-// スタイルをモックする空のオブジェクト
-module.exports = {}; 
+module.exports = {};
