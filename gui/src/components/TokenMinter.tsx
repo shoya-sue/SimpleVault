@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTokenMint } from '../hooks/useTokenMint';
 import { useWallet } from '@solana/wallet-adapter-react';
+import { validateTokenAmount } from '../utils/validation';
 import ErrorMessage from './ErrorMessage';
 import LoadingIndicator from './LoadingIndicator';
 
@@ -39,6 +40,41 @@ const TokenMinter: React.FC = () => {
     }
   }, [error]);
 
+  // トークン数量の変更ハンドラ
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = parseInt(e.target.value, 10) || 0;
+    
+    // バリデーション
+    const validation = validateTokenAmount(value);
+    if (!validation.isValid) {
+      setErrorMessage(validation.errorMessage);
+    } else {
+      setErrorMessage(null);
+      setAmount(value);
+    }
+  };
+
+  // 数量の増減
+  const incrementAmount = () => {
+    const newAmount = amount + 1;
+    const validation = validateTokenAmount(newAmount);
+    if (validation.isValid) {
+      setAmount(newAmount);
+      setErrorMessage(null);
+    }
+  };
+
+  const decrementAmount = () => {
+    if (amount <= 1) return;
+    
+    const newAmount = amount - 1;
+    const validation = validateTokenAmount(newAmount);
+    if (validation.isValid) {
+      setAmount(newAmount);
+      setErrorMessage(null);
+    }
+  };
+
   // ミント作成
   const handleCreateMint = async () => {
     if (!publicKey) {
@@ -67,6 +103,13 @@ const TokenMinter: React.FC = () => {
       return;
     }
 
+    // トークン数量の検証
+    const validation = validateTokenAmount(amount);
+    if (!validation.isValid) {
+      setErrorMessage(validation.errorMessage);
+      return;
+    }
+
     setStatusMessage('トークンをミント中...');
     setErrorMessage(null);
     const success = await mintTokens(amount);
@@ -79,6 +122,15 @@ const TokenMinter: React.FC = () => {
         setErrorMessage('トークンのミントに失敗しました');
       }
     }
+  };
+
+  // 入力が有効かどうかのチェック
+  const isCreateMintValid = (): boolean => {
+    return !!publicKey && !loading && !mintCreated;
+  };
+
+  const isMintTokensValid = (): boolean => {
+    return !!publicKey && !loading && !!mintCreated && validateTokenAmount(amount).isValid;
   };
 
   return (
@@ -107,9 +159,9 @@ const TokenMinter: React.FC = () => {
       <div className="mb-6">
         <button
           onClick={handleCreateMint}
-          disabled={loading || !publicKey || mintCreated}
+          disabled={!isCreateMintValid()}
           className={`w-full py-2 px-4 rounded font-bold transition-colors ${
-            loading || !publicKey || mintCreated
+            !isCreateMintValid()
               ? 'bg-gray-300 text-gray-500 dark:bg-gray-700 dark:text-gray-500 cursor-not-allowed'
               : 'bg-solana-purple hover:bg-purple-700 text-white'
           }`}
@@ -147,19 +199,19 @@ const TokenMinter: React.FC = () => {
             type="number"
             min="1"
             value={amount}
-            onChange={(e) => setAmount(Math.max(1, parseInt(e.target.value) || 1))}
+            onChange={handleAmountChange}
             disabled={loading || !mintCreated}
             className="shadow appearance-none border dark:border-gray-700 rounded-l w-full py-2 px-3 text-gray-700 dark:text-gray-300 dark:bg-gray-800 leading-tight focus:outline-none focus:shadow-outline"
           />
           <button
-            onClick={() => setAmount(prev => prev + 1)}
+            onClick={incrementAmount}
             disabled={loading || !mintCreated}
             className="bg-gray-200 dark:bg-gray-700 px-3 rounded-tr border-t border-r border-b dark:border-gray-600 text-gray-700 dark:text-gray-300"
           >
             +
           </button>
           <button
-            onClick={() => setAmount(prev => Math.max(1, prev - 1))}
+            onClick={decrementAmount}
             disabled={loading || !mintCreated || amount <= 1}
             className="bg-gray-200 dark:bg-gray-700 px-3 rounded-br border-r border-b dark:border-gray-600 text-gray-700 dark:text-gray-300"
           >
@@ -172,9 +224,9 @@ const TokenMinter: React.FC = () => {
       <div>
         <button
           onClick={handleMintTokens}
-          disabled={loading || !publicKey || !mintCreated}
+          disabled={!isMintTokensValid()}
           className={`w-full py-2 px-4 rounded font-bold transition-colors ${
-            loading || !publicKey || !mintCreated
+            !isMintTokensValid()
               ? 'bg-gray-300 text-gray-500 dark:bg-gray-700 dark:text-gray-500 cursor-not-allowed'
               : 'bg-solana-green hover:bg-green-600 text-white'
           }`}

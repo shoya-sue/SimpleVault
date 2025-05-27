@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { useVaultProgram } from '../hooks/useVaultProgram';
 import { formatSol } from '../utils/format';
+import { validateSolAmountWithBalance } from '../utils/validation';
 import ErrorMessage from './ErrorMessage';
 import LoadingIndicator from './LoadingIndicator';
 
@@ -41,14 +42,22 @@ export const DepositForm: React.FC = () => {
     return () => clearInterval(interval);
   }, [publicKey, connection]);
 
-  // 入力値の検証
-  const validateInput = (value: string): boolean => {
-    // 空文字列や非数値を拒否
-    if (!value || isNaN(parseFloat(value))) return false;
+  // 入力値変更時のハンドラ
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setAmount(value);
     
-    // 残高を超える金額を拒否
-    const numValue = parseFloat(value);
-    return numValue > 0 && numValue <= balance - 0.01; // 手数料用に0.01 SOL残す
+    // 金額入力時にリアルタイムバリデーション
+    if (value) {
+      const validation = validateSolAmountWithBalance(value, balance);
+      if (!validation.isValid) {
+        setErrorMessage(validation.errorMessage);
+      } else {
+        setErrorMessage(null);
+      }
+    } else {
+      setErrorMessage(null);
+    }
   };
 
   // 預け入れ処理
@@ -58,8 +67,10 @@ export const DepositForm: React.FC = () => {
       return;
     }
 
-    if (!validateInput(amount)) {
-      setErrorMessage('有効な金額を入力してください（残高を超えない額）');
+    // 送信前の最終バリデーション
+    const validation = validateSolAmountWithBalance(amount, balance);
+    if (!validation.isValid) {
+      setErrorMessage(validation.errorMessage);
       return;
     }
 
@@ -89,10 +100,26 @@ export const DepositForm: React.FC = () => {
   const setMaxAmount = () => {
     // 手数料用に0.01 SOL残す
     if (balance > 0.01) {
-      setAmount((balance - 0.01).toFixed(4));
+      const maxAmount = (balance - 0.01).toFixed(4);
+      setAmount(maxAmount);
+      
+      // 最大額設定時のバリデーション
+      const validation = validateSolAmountWithBalance(maxAmount, balance);
+      if (!validation.isValid) {
+        setErrorMessage(validation.errorMessage);
+      } else {
+        setErrorMessage(null);
+      }
     } else {
       setErrorMessage('残高が不足しています');
     }
+  };
+
+  // 入力が有効かチェック
+  const isInputValid = (): boolean => {
+    if (!amount || !publicKey || loading) return false;
+    const validation = validateSolAmountWithBalance(amount, balance);
+    return validation.isValid;
   };
 
   return (
@@ -130,7 +157,7 @@ export const DepositForm: React.FC = () => {
           <input
             type="text"
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            onChange={handleAmountChange}
             placeholder="0.0"
             className="shadow appearance-none border dark:border-gray-700 rounded-l w-full py-2 px-3 text-gray-700 dark:text-gray-300 dark:bg-gray-800 leading-tight focus:outline-none focus:shadow-outline"
             disabled={!publicKey || loading}
@@ -147,9 +174,9 @@ export const DepositForm: React.FC = () => {
 
       <button
         onClick={handleDeposit}
-        disabled={!publicKey || loading || !validateInput(amount)}
+        disabled={!isInputValid()}
         className={`w-full py-2 px-4 rounded font-bold transition-colors ${
-          !publicKey || loading || !validateInput(amount)
+          !isInputValid()
             ? 'bg-gray-300 text-gray-500 dark:bg-gray-700 dark:text-gray-500 cursor-not-allowed'
             : 'bg-solana-green hover:bg-green-600 text-white'
         }`}

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { useVaultProgram } from '../hooks/useVaultProgram';
 import { formatSol } from '../utils/format';
+import { validateSolAmount } from '../utils/validation';
 import ErrorMessage from './ErrorMessage';
 import LoadingIndicator from './LoadingIndicator';
 
@@ -36,14 +37,30 @@ export const WithdrawForm: React.FC = () => {
     }
   }, [publicKey]);
 
-  // 入力値の検証
-  const validateInput = (value: string): boolean => {
-    // 空文字列や非数値を拒否
-    if (!value || isNaN(parseFloat(value))) return false;
+  // 入力値変更時のハンドラ
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setAmount(value);
     
-    // 残高を超える金額を拒否
-    const numValue = parseFloat(value);
-    return numValue > 0 && numValue <= vaultBalance;
+    // 金額入力時にリアルタイムバリデーション
+    if (value) {
+      // 基本検証
+      const validation = validateSolAmount(value);
+      if (!validation.isValid) {
+        setErrorMessage(validation.errorMessage);
+        return;
+      }
+      
+      // 残高チェック
+      const numValue = parseFloat(value);
+      if (numValue > vaultBalance) {
+        setErrorMessage('Vault残高を超える金額は引き出せません');
+      } else {
+        setErrorMessage(null);
+      }
+    } else {
+      setErrorMessage(null);
+    }
   };
 
   // 引き出し処理
@@ -53,8 +70,17 @@ export const WithdrawForm: React.FC = () => {
       return;
     }
 
-    if (!validateInput(amount)) {
-      setErrorMessage('有効な金額を入力してください（残高以下の額）');
+    // 送信前の最終バリデーション
+    const validation = validateSolAmount(amount);
+    if (!validation.isValid) {
+      setErrorMessage(validation.errorMessage);
+      return;
+    }
+    
+    // 残高チェック
+    const numValue = parseFloat(amount);
+    if (numValue > vaultBalance) {
+      setErrorMessage('Vault残高を超える金額は引き出せません');
       return;
     }
 
@@ -85,9 +111,23 @@ export const WithdrawForm: React.FC = () => {
   const setMaxAmount = () => {
     if (vaultBalance > 0) {
       setAmount(vaultBalance.toFixed(4));
+      setErrorMessage(null);
     } else {
       setErrorMessage('Vault残高がありません');
     }
+  };
+
+  // 入力が有効かチェック
+  const isInputValid = (): boolean => {
+    if (!amount || !publicKey || loading) return false;
+    
+    // 基本検証
+    const validation = validateSolAmount(amount);
+    if (!validation.isValid) return false;
+    
+    // 残高チェック
+    const numValue = parseFloat(amount);
+    return numValue > 0 && numValue <= vaultBalance;
   };
 
   return (
@@ -125,7 +165,7 @@ export const WithdrawForm: React.FC = () => {
           <input
             type="text"
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            onChange={handleAmountChange}
             placeholder="0.0"
             className="shadow appearance-none border dark:border-gray-700 rounded-l w-full py-2 px-3 text-gray-700 dark:text-gray-300 dark:bg-gray-800 leading-tight focus:outline-none focus:shadow-outline"
             disabled={!publicKey || loading}
@@ -142,9 +182,9 @@ export const WithdrawForm: React.FC = () => {
 
       <button
         onClick={handleWithdraw}
-        disabled={!publicKey || loading || !validateInput(amount)}
+        disabled={!isInputValid()}
         className={`w-full py-2 px-4 rounded font-bold transition-colors ${
-          !publicKey || loading || !validateInput(amount)
+          !isInputValid()
             ? 'bg-gray-300 text-gray-500 dark:bg-gray-700 dark:text-gray-500 cursor-not-allowed'
             : 'bg-solana-purple hover:bg-purple-700 text-white'
         }`}
