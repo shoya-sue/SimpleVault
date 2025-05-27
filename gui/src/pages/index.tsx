@@ -5,6 +5,7 @@ import { BalanceDisplay } from '../components/BalanceDisplay';
 import { DepositForm } from '../components/DepositForm';
 import { WithdrawForm } from '../components/WithdrawForm';
 import TokenMinter from '../components/TokenMinter';
+import TransactionHistory from '../components/TransactionHistory';
 import { useWallet } from '@solana/wallet-adapter-react';
 
 const Home: NextPage = () => {
@@ -42,8 +43,13 @@ const Home: NextPage = () => {
               </div>
             </div>
             
-            <div className="max-w-md mx-auto">
-              <TokenMinter />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-6xl mx-auto mb-10">
+              <div>
+                <TokenMinter />
+              </div>
+              <div>
+                <TransactionHistory />
+              </div>
             </div>
           </>
         ) : (
