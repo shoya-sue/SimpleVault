@@ -4,6 +4,7 @@ import { WalletConnect } from '../components/WalletConnect';
 import { BalanceDisplay } from '../components/BalanceDisplay';
 import { DepositForm } from '../components/DepositForm';
 import { WithdrawForm } from '../components/WithdrawForm';
+import TokenMinter from '../components/TokenMinter';
 import { useWallet } from '@solana/wallet-adapter-react';
 
 const Home: NextPage = () => {
@@ -28,17 +29,23 @@ const Home: NextPage = () => {
         </div>
 
         {connected ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto">
-            <div>
-              <BalanceDisplay />
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto mb-10">
+              <div>
+                <BalanceDisplay />
+              </div>
+              <div>
+                <DepositForm />
+              </div>
+              <div>
+                <WithdrawForm />
+              </div>
             </div>
-            <div>
-              <DepositForm />
+            
+            <div className="max-w-md mx-auto">
+              <TokenMinter />
             </div>
-            <div>
-              <WithdrawForm />
-            </div>
-          </div>
+          </>
         ) : (
           <div className="text-center text-gray-500 mt-10">
             <p>Please connect your wallet to use SimpleVault</p>
