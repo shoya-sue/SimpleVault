@@ -71,12 +71,6 @@ gui/
 - TypeScriptの型エラーは依存関係をインストールすると解消されます
 - 開発環境では `.npmrc` ファイルの設定により依存関係の互換性問題を解決しています
 
-## Dockerを使用する場合
-
-```bash
-docker-compose up --build
-```
-
 ## プログラムデプロイ
 
 このGUIはSolana devnetにデプロイされたSimpleVaultスマートコントラクトと連携します。
