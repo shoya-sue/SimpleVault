@@ -1,6 +1,19 @@
 /smart_contract/simple_vault/
+/smart_contract/app/
 
 # Build directories
 /smart_contract/target/
 /smart_contract/node_modules/
+
+# Solana & Anchor specific
+.anchor/
+**/.DS_Store
+**/test-ledger/
+**/.yarn/
+**/node_modules/
+**/dist/
+**/.idea/
+# **/.vscode/
+**/build/
+**/yarn-error.log
 

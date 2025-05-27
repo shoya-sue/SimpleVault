@@ -86,3 +86,48 @@ SimpleVault/
 - https://www.anchor-lang.com/docs
 - https://solana.com/ja/docs/intro/installation
 - https://note.com/standenglish/n/n5bc42d6fd5e4
+
+# SimpleVault
+
+Solanaブロックチェーン上で動作するSPLトークンのための金庫（バリデーション）システムです。
+
+## プロジェクト構成
+
+- `smart_contract/` - Solanaスマートコントラクト（Anchor Framework）
+- `gui/` - フロントエンドアプリケーション
+- `docs/` - 詳細なドキュメント
+
+## プロジェクトのクリーンアップ
+
+プロジェクトには以下の不要なディレクトリが含まれています：
+
+- `smart_contract/simple_vault/` - 内容はすべて `smart_contract/` に移動済み
+- `smart_contract/app/` - 空のディレクトリ
+- `smart_contract/node_modules/` - ビルド時に再生成されるため削除可能
+- `smart_contract/target/` - ビルド成果物のため削除可能
+
+### Windows環境でのクリーンアップ
+
+```batch
+rmdir /s /q "smart_contract\simple_vault"
+rmdir /s /q "smart_contract\app"
+rmdir /s /q "smart_contract\node_modules"
+rmdir /s /q "smart_contract\target"
+```
+
+### Unix環境でのクリーンアップ
+
+```bash
+rm -rf smart_contract/simple_vault
+rm -rf smart_contract/app
+rm -rf smart_contract/node_modules
+rm -rf smart_contract/target
+```
+
+## スマートコントラクト
+
+詳細な情報は [smart_contract/README.md](smart_contract/README.md) を参照してください。
+
+## フロントエンド
+
+詳細な情報は [gui/README.md](gui/README.md) を参照してください。
