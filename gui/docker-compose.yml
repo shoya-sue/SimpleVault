@@ -1,0 +1,16 @@
+version: '3.8'
+services:
+  gui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: simplevault-gui
+    container_name: simplevault-gui
+    working_dir: /app
+    volumes:
+      - ./:/app
+    ports:
+      - "3000:3000"
+    tty: true
+    environment:
+      - NODE_ENV=development
