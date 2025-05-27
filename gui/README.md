@@ -1,10 +1,6 @@
 # SimpleVault GUI
 
-このディレクトリは、SimpleVaultプロジェクトのフロントエンド（GUI）アプリケーションのソースコードと設計資料を格納します。
-
-## 目的
-
-- ユーザーがWebブラウザ上でSolana上のSimpleVaultスマートコントラクトを直感的に操作できるようにする。
+このディレクトリは、SimpleVaultプロジェクトのフロントエンド（GUI）アプリケーションのソースコードを格納します。
 
 ## 主な機能
 
@@ -12,44 +8,76 @@
 2. SPLトークンの預け入れ（Deposit）
 3. SPLトークンの引き出し（Withdraw）
 4. 残高確認（Query Balance）
-5. トランザクション履歴表示（任意）
 
 ## 技術スタック
 
 - React / Next.js
-- Solana Wallet Adapter
 - TypeScript
+- Tailwind CSS
+- Solana Web3.js
+- Solana Wallet Adapter
+- Anchor Framework
 
 ## ディレクトリ構成
 
 ```
 gui/
-├── README.md
-├── Dockerfile
-├── docker-compose.yml
-├── package.json
-├── public/
+├── public/                # 静的ファイル
+│   └── favicon.ico        # サイトアイコン
 ├── src/
-│   ├── components/
-│   ├── hooks/
-│   ├── pages/
-│   └── utils/
+│   ├── components/        # UIコンポーネント
+│   │   ├── BalanceDisplay.tsx   # 残高表示
+│   │   ├── DepositForm.tsx      # 預け入れフォーム
+│   │   ├── WalletConnect.tsx    # ウォレット接続
+│   │   └── WithdrawForm.tsx     # 引き出しフォーム
+│   ├── hooks/             # カスタムフック
+│   │   └── useVault.ts    # Vaultとの連携
+│   ├── pages/             # ページコンポーネント
+│   │   ├── _app.tsx       # アプリルート
+│   │   └── index.tsx      # ホームページ
+│   ├── styles/            # スタイル定義
+│   │   └── globals.css    # グローバルスタイル
+│   └── utils/             # ユーティリティ
+│       └── constants.ts   # 定数定義
+├── .gitignore             # Git除外設定
+├── .npmrc                 # npm設定
+├── next-env.d.ts          # Next.js型定義
+├── package.json           # 依存関係定義
+├── postcss.config.js      # PostCSS設定
+├── tailwind.config.js     # Tailwind CSS設定
+└── tsconfig.json          # TypeScript設定
 ```
 
-## Dockerによる開発環境構築
+## セットアップ手順
 
-1. `Dockerfile` と `docker-compose.yml` を用意しています。
-2. 以下のコマンドで開発用サーバを起動できます。
+1. 必要なパッケージをインストール
+   ```bash
+   npm install
+   # または
+   yarn
+   ```
 
-```sh
+2. 開発サーバーを起動
+   ```bash
+   npm run dev
+   # または
+   yarn dev
+   ```
+
+3. ブラウザで `http://localhost:3000` にアクセス
+
+## 注意事項
+
+- TypeScriptの型エラーは依存関係をインストールすると解消されます
+- 開発環境では `.npmrc` ファイルの設定により依存関係の互換性問題を解決しています
+
+## Dockerを使用する場合
+
+```bash
 docker-compose up --build
 ```
 
-- ポート番号や環境変数は `docker-compose.yml` で調整してください。
-- バックエンド（smart_contract）は別コンテナで起動してください。
+## プログラムデプロイ
 
-## 備考
-
-- UI/UXはモダンな設計を目指します。
-- Solana devnetでの動作を前提としています。
-- 詳細な設計・仕様は `docs/` 配下の資料も参照してください。
+このGUIはSolana devnetにデプロイされたSimpleVaultスマートコントラクトと連携します。
+デプロイされたプログラムIDは `src/utils/constants.ts` に設定されています。
