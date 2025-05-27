@@ -1,0 +1,8 @@
+{
+  // ワークスペースを開いたときにREADMEを開く（VS Code標準機能の範囲）
+  "workbench.startupEditor": "readme",
+  // Markdownファイルのプレビューをデフォルトで開く
+  "markdown.preview.openMarkdownLinks": "inPreviewTab",
+  // 必要に応じて拡張機能で自動オープンを強化可能
+  // "simpleVault.docsOnStartup": ["docs/README.md", "README.md"]
+}
