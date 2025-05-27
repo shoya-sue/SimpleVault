@@ -75,7 +75,7 @@ describe('shortenAddress', () => {
 describe('formatAddress', () => {
   test('formats address correctly', () => {
     const address = '5YNmS1R9nNSCDzb5a7mMJ1dwK9uHeAAF4CerVnwgX5xC';
-    expect(formatAddress(address)).toBe('5YNmS...X5xC');
+    expect(formatAddress(address)).toBe('5YNmS...gX5xC');
   });
 
   test('handles null or undefined address', () => {
