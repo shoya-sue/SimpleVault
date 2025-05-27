@@ -37,6 +37,26 @@ SimpleVault/
 │   └── simple_vault_test.js
 ├── migrations/               # デプロイスクリプト
 │   └── deploy.js
+├── docs/                     # ドキュメント・要件定義
+│   ├── README.md             # ドキュメント全体の説明
+│   ├── smart_contract/       # スマートコントラクト要件
+│   │   └── README.md
+│   └── gui/                  # GUI要件
+│       └── README.md
+├── gui/                      # フロントエンド（GUI）本体
+│   ├── README.md
+│   ├── package.json          # フロントエンド依存関係
+│   ├── public/               # 静的ファイル（画像・favicon等）
+│   └── src/                  # ソースコード
+│       ├── components/       # UIコンポーネント
+│       │   ├── DepositForm.tsx      # 預け入れフォーム
+│       │   ├── WithdrawForm.tsx     # 引き出しフォーム
+│       │   ├── BalanceDisplay.tsx   # 残高表示
+│       │   └── WalletConnect.tsx    # ウォレット接続
+│       ├── pages/           # ルーティングページ
+│       │   └── index.tsx    # メインページ
+│       ├── hooks/           # カスタムフック（Solana/Anchor連携等）
+│       └── utils/           # ユーティリティ関数
 ├── .gitignore                # Git管理対象外設定
 └── README.md                 # プロジェクトの説明
 ```
