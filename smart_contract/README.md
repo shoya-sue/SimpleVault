@@ -41,19 +41,31 @@ simple_vault/
 ### インストール手順
 
 1. **Solana CLI**のインストール:
-   ```
+   ```bash
    sh -c "$(curl -sSfL https://release.solana.com/v1.17.0/install)"
    ```
+   動作確認
+    ```bash
+    solana --version
+    ```
 
 2. **Rust**のインストール:
-   ```
+   ```bash
    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
    ```
+    動作確認
+    ```bash
+    rustc --version
+    ```
 
 3. **Anchor Framework**のインストール:
    ```
    npm install -g @coral-xyz/anchor-cli
    ```
+    動作確認
+    ```bash
+    anchor --version
+    ```
 
 ## ビルド手順
 
@@ -69,6 +81,7 @@ simple_vault/
    ```
    solana-test-validator
    ```
+   ※ devnetなら不要
 
 2. 別のターミナルでテストを実行:
    ```
@@ -81,6 +94,7 @@ simple_vault/
    ```
    solana config set --url <ネットワークURL>
    ```
+    例: `https://api.devnet.solana.com`
 
 2. デプロイを実行:
    ```
