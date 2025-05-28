@@ -253,7 +253,33 @@ export const IDL = {
       ],
       "args": [
         {
-          "name": "txId",
+          "name": "transactionId",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "initiateWithdrawal",
+      "accounts": [
+        {
+          "name": "vault",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "userTokenAccount",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "owner",
+          "isMut": true,
+          "isSigner": true
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
           "type": "u64"
         }
       ]
@@ -274,7 +300,7 @@ export const IDL = {
       ],
       "args": [
         {
-          "name": "limit",
+          "name": "amount",
           "type": "u64"
         }
       ]
@@ -458,8 +484,8 @@ export const IDL = {
   "errors": [
     {
       "code": 6000,
-      "name": "Unauthorized",
-      "msg": "Only the vault owner can perform this action"
+      "name": "NotVaultOwner",
+      "msg": "You are not the vault owner"
     },
     {
       "code": 6001,
@@ -468,23 +494,56 @@ export const IDL = {
     },
     {
       "code": 6002,
-      "name": "InvalidThreshold",
-      "msg": "Invalid multisig threshold"
+      "name": "InsufficientFunds",
+      "msg": "Insufficient funds in vault"
     },
     {
       "code": 6003,
+      "name": "MaxDelegatesReached",
+      "msg": "Maximum number of delegates reached"
+    },
+    {
+      "code": 6004,
+      "name": "DelegateNotFound",
+      "msg": "Delegate not found"
+    },
+    {
+      "code": 6005,
+      "name": "InvalidThreshold",
+      "msg": "Invalid threshold value"
+    },
+    {
+      "code": 6006,
+      "name": "NotAuthorized",
+      "msg": "Not authorized to perform this action"
+    },
+    {
+      "code": 6007,
       "name": "TransactionNotFound",
       "msg": "Transaction not found"
     },
     {
-      "code": 6004,
-      "name": "ExceedsWithdrawalLimit",
-      "msg": "Withdrawal amount exceeds the limit"
+      "code": 6008,
+      "name": "AlreadySigned",
+      "msg": "Already signed this transaction"
     },
     {
-      "code": 6005,
+      "code": 6009,
+      "name": "WithdrawalLimitExceeded",
+      "msg": "Withdrawal amount exceeds limit"
+    },
+    {
+      "code": 6010,
       "name": "NoOwnershipTransferPending",
-      "msg": "No ownership transfer is pending"
+      "msg": "No ownership transfer pending"
+    },
+    {
+      "code": 6011,
+      "name": "NotPendingOwner",
+      "msg": "Not the pending owner"
     }
-  ]
+  ],
+  "metadata": {
+    "address": "HLQtzTsQyzFgueH4dK3kgL3BZyE7Ts6S7VqCEXUDMcCz"
+  }
 }; 
