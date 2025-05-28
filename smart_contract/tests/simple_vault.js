@@ -56,11 +56,10 @@ describe("simple_vault", () => {
       program.programId
     );
 
-    // Derive vault token account
-    vaultTokenAccount = await PublicKey.findProgramAddress(
-      [Buffer.from("token-account"), vaultPDA.toBuffer()],
-      program.programId
-    );
+    // Create a new keypair for vault token account
+    // Note: In actual implementation, the token account is created during initialization
+    // and assigned to the vault PDA as the authority
+    vaultTokenAccount = anchor.web3.Keypair.generate();
   });
 
   it("Initializes the vault", async () => {
@@ -68,20 +67,20 @@ describe("simple_vault", () => {
       .initialize()
       .accounts({
         vault: vaultPDA,
-        vaultTokenAccount: vaultTokenAccount,
+        vaultTokenAccount: vaultTokenAccount.publicKey,
         mint: mintKeypair.publicKey,
         owner: ownerKeypair.publicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
         rent: anchor.web3.SYSVAR_RENT_PUBKEY,
       })
-      .signers([ownerKeypair])
+      .signers([ownerKeypair, vaultTokenAccount])
       .rpc();
 
     // Verify vault data
     const vaultAccount = await program.account.vault.fetch(vaultPDA);
     assert.equal(vaultAccount.owner.toString(), ownerKeypair.publicKey.toString());
-    assert.equal(vaultAccount.tokenAccount.toString(), vaultTokenAccount.toString());
+    assert.equal(vaultAccount.tokenAccount.toString(), vaultTokenAccount.publicKey.toString());
     assert.equal(vaultAccount.bump, vaultBump);
   });
 
@@ -92,7 +91,7 @@ describe("simple_vault", () => {
       .deposit(depositAmount)
       .accounts({
         vault: vaultPDA,
-        vaultTokenAccount: vaultTokenAccount,
+        vaultTokenAccount: vaultTokenAccount.publicKey,
         userTokenAccount: userTokenAccount,
         owner: ownerKeypair.publicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
@@ -102,7 +101,7 @@ describe("simple_vault", () => {
 
     // Verify token balances
     const userBalance = await provider.connection.getTokenAccountBalance(userTokenAccount);
-    const vaultBalance = await provider.connection.getTokenAccountBalance(vaultTokenAccount);
+    const vaultBalance = await provider.connection.getTokenAccountBalance(vaultTokenAccount.publicKey);
     
     assert.equal(
       Number(balanceBefore.value.amount) - Number(userBalance.value.amount),
@@ -116,7 +115,7 @@ describe("simple_vault", () => {
       .queryBalance()
       .accounts({
         vault: vaultPDA,
-        tokenAccount: vaultTokenAccount,
+        tokenAccount: vaultTokenAccount.publicKey,
       })
       .view();
 
@@ -125,13 +124,13 @@ describe("simple_vault", () => {
 
   it("Withdraws tokens from the vault", async () => {
     const userBalanceBefore = await provider.connection.getTokenAccountBalance(userTokenAccount);
-    const vaultBalanceBefore = await provider.connection.getTokenAccountBalance(vaultTokenAccount);
+    const vaultBalanceBefore = await provider.connection.getTokenAccountBalance(vaultTokenAccount.publicKey);
     
     await program.methods
       .withdraw(withdrawAmount)
       .accounts({
         vault: vaultPDA,
-        vaultTokenAccount: vaultTokenAccount,
+        vaultTokenAccount: vaultTokenAccount.publicKey,
         userTokenAccount: userTokenAccount,
         owner: ownerKeypair.publicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
@@ -141,7 +140,7 @@ describe("simple_vault", () => {
 
     // Verify token balances
     const userBalance = await provider.connection.getTokenAccountBalance(userTokenAccount);
-    const vaultBalance = await provider.connection.getTokenAccountBalance(vaultTokenAccount);
+    const vaultBalance = await provider.connection.getTokenAccountBalance(vaultTokenAccount.publicKey);
     
     assert.equal(
       Number(userBalance.value.amount) - Number(userBalanceBefore.value.amount),
