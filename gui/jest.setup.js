@@ -1,5 +1,5 @@
 // @testing-library/jest-domのインポート
-require('@testing-library/jest-dom');
+import '@testing-library/jest-dom';
 
 // モックの設定
 jest.mock('@solana/wallet-adapter-react', () => ({
