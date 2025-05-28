@@ -91,10 +91,12 @@ simple_vault/
 ## デプロイ手順
 
 1. Solanaネットワークを設定:
-   ```
+   ```bash
    solana config set --url <ネットワークURL>
+   solana config keypair set <キーペアファイル>
    ```
-    例: `https://api.devnet.solana.com`
+    例: `https://api.devnet.solana.com`, `~/.config/solana/id.json`
+   ※ devnetを使用する場合は、事前にSOLを取得しておく必要があります。
 
 2. デプロイを実行:
    ```
