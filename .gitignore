@@ -4,6 +4,7 @@
 # Build directories
 /smart_contract/target/
 /smart_contract/node_modules/
+/smart_contract/Cargo.lock
 
 # Solana & Anchor specific
 .anchor/
