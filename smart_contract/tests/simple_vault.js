@@ -12,20 +12,26 @@ describe("simple_vault", () => {
   const ownerKeypair = anchor.web3.Keypair.generate();
   const mintKeypair = anchor.web3.Keypair.generate();
   const delegateKeypair = anchor.web3.Keypair.generate(); // 委任先のキーペア
+  const multisigSigner1 = anchor.web3.Keypair.generate(); // 多重署名者1
+  const multisigSigner2 = anchor.web3.Keypair.generate(); // 多重署名者2
   let userTokenAccount;
   let delegateTokenAccount; // 委任先のトークンアカウント
+  let multisigSigner1TokenAccount; // 多重署名者1のトークンアカウント
   let vaultTokenAccount;
   let vaultPDA;
   let vaultBump;
 
   const depositAmount = new anchor.BN(1000000);
-  const withdrawAmount = new anchor.BN(500000);
+  const withdrawAmount = new anchor.BN(200000);
   const lockDuration = new anchor.BN(10); // 10秒間のロック
+  const multisigWithdrawAmount = new anchor.BN(300000);
 
   before(async () => {
-    // Airdrop SOL to owner and delegate
+    // Airdrop SOL to owner, delegate, and multisig signers
     await provider.connection.requestAirdrop(ownerKeypair.publicKey, 10 * anchor.web3.LAMPORTS_PER_SOL);
     await provider.connection.requestAirdrop(delegateKeypair.publicKey, 10 * anchor.web3.LAMPORTS_PER_SOL);
+    await provider.connection.requestAirdrop(multisigSigner1.publicKey, 10 * anchor.web3.LAMPORTS_PER_SOL);
+    await provider.connection.requestAirdrop(multisigSigner2.publicKey, 10 * anchor.web3.LAMPORTS_PER_SOL);
 
     // Create new mint
     const mint = await createMint(
@@ -37,7 +43,7 @@ describe("simple_vault", () => {
       mintKeypair
     );
 
-    // Create user token account
+    // Create token accounts
     userTokenAccount = await createAccount(
       provider.connection,
       provider.wallet.payer,
@@ -45,12 +51,18 @@ describe("simple_vault", () => {
       ownerKeypair.publicKey
     );
 
-    // Create delegate token account
     delegateTokenAccount = await createAccount(
       provider.connection,
       provider.wallet.payer,
       mint,
       delegateKeypair.publicKey
+    );
+
+    multisigSigner1TokenAccount = await createAccount(
+      provider.connection,
+      provider.wallet.payer,
+      mint,
+      multisigSigner1.publicKey
     );
 
     // Mint tokens to user
@@ -97,6 +109,9 @@ describe("simple_vault", () => {
     assert.equal(vaultAccount.bump, vaultBump);
     assert.equal(vaultAccount.lockUntil.toNumber(), 0); // 初期状態ではロックなし
     assert.equal(vaultAccount.delegates.length, 0); // 初期状態では委任なし
+    assert.equal(vaultAccount.multisigThreshold, 1); // 初期状態では単一署名
+    assert.equal(vaultAccount.multisigSigners.length, 0); // 初期状態では追加の署名者なし
+    assert.equal(vaultAccount.pendingTransactions.length, 0); // 初期状態では保留中のトランザクションなし
   });
 
   it("Deposits tokens to the vault", async () => {
@@ -290,5 +305,98 @@ describe("simple_vault", () => {
     } catch (error) {
       assert(error.toString().includes("Unauthorized"), "Expected Unauthorized error");
     }
+  });
+
+  it("Sets up multisig with 2 signers requirement", async () => {
+    // Configure vault as multisig with threshold 2
+    // (requires owner + 1 more signature)
+    await program.methods
+      .setMultisig(2, [multisigSigner1.publicKey, multisigSigner2.publicKey])
+      .accounts({
+        vault: vaultPDA,
+        owner: ownerKeypair.publicKey,
+      })
+      .signers([ownerKeypair])
+      .rpc();
+    
+    // Verify multisig setup
+    const vaultAccount = await program.account.vault.fetch(vaultPDA);
+    assert.equal(vaultAccount.multisigThreshold, 2, "Threshold should be 2");
+    assert.equal(vaultAccount.multisigSigners.length, 2, "Should have 2 multisig signers");
+    assert.equal(
+      vaultAccount.multisigSigners[0].toString(),
+      multisigSigner1.publicKey.toString(),
+      "First signer should match"
+    );
+    assert.equal(
+      vaultAccount.multisigSigners[1].toString(),
+      multisigSigner2.publicKey.toString(),
+      "Second signer should match"
+    );
+  });
+
+  it("Creates a pending transaction when withdraw is initiated in multisig mode", async () => {
+    // Try to withdraw - this should create a pending transaction
+    await program.methods
+      .withdraw(multisigWithdrawAmount)
+      .accounts({
+        vault: vaultPDA,
+        vaultTokenAccount: vaultTokenAccount.publicKey,
+        userTokenAccount: userTokenAccount,
+        owner: ownerKeypair.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .signers([ownerKeypair])
+      .rpc();
+    
+    // Verify pending transaction was created
+    const vaultAccount = await program.account.vault.fetch(vaultPDA);
+    assert.equal(vaultAccount.pendingTransactions.length, 1, "Should have one pending transaction");
+    assert.equal(vaultAccount.pendingTransactions[0].executed, false, "Transaction should not be executed yet");
+    assert.equal(vaultAccount.pendingTransactions[0].amount.toNumber(), multisigWithdrawAmount.toNumber(), "Amount should match");
+    assert.equal(vaultAccount.pendingTransactions[0].signers.length, 1, "Should have owner's signature");
+    assert.equal(
+      vaultAccount.pendingTransactions[0].signers[0].toString(),
+      ownerKeypair.publicKey.toString(),
+      "First signature should be from owner"
+    );
+  });
+
+  it("Completes the multisig transaction when enough signatures are collected", async () => {
+    const txId = 0; // First transaction
+    const userBalanceBefore = await provider.connection.getTokenAccountBalance(userTokenAccount);
+    const vaultBalanceBefore = await provider.connection.getTokenAccountBalance(vaultTokenAccount.publicKey);
+    
+    // Second signer approves the transaction
+    await program.methods
+      .approveTransaction(new anchor.BN(txId))
+      .accounts({
+        vault: vaultPDA,
+        vaultTokenAccount: vaultTokenAccount.publicKey,
+        destinationTokenAccount: userTokenAccount,
+        signer: multisigSigner1.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .signers([multisigSigner1])
+      .rpc();
+    
+    // Verify transaction executed
+    const vaultAccount = await program.account.vault.fetch(vaultPDA);
+    assert.equal(vaultAccount.pendingTransactions[0].executed, true, "Transaction should be executed");
+    
+    // Verify token balances
+    const userBalance = await provider.connection.getTokenAccountBalance(userTokenAccount);
+    const vaultBalance = await provider.connection.getTokenAccountBalance(vaultTokenAccount.publicKey);
+    
+    assert.equal(
+      Number(userBalance.value.amount) - Number(userBalanceBefore.value.amount),
+      multisigWithdrawAmount.toNumber(),
+      "User balance should increase by withdraw amount"
+    );
+    assert.equal(
+      Number(vaultBalanceBefore.value.amount) - Number(vaultBalance.value.amount),
+      multisigWithdrawAmount.toNumber(),
+      "Vault balance should decrease by withdraw amount"
+    );
   });
 });

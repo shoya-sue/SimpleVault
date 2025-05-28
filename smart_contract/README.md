@@ -10,6 +10,7 @@ SimpleVaultはSolanaブロックチェーン上で動作するSPLトークンの
 - **残高確認**: 金庫内のトークン残高を確認
 - **タイムロック**: 指定した期間、金庫からの引き出しをロックする機能
 - **権限委任**: 金庫の所有者が他のアドレスに操作権限を委任できる機能
+- **多重署名**: 複数の署名者が承認した場合のみ引き出しを許可する機能
 
 ## プロジェクト構成
 
@@ -143,7 +144,41 @@ await program.methods
   .signers([ownerKeypair])
   .rpc();
 
-// トークン引き出し（タイムロック期間終了後のみ可能、所有者または委任者が実行可能）
+// 多重署名の設定（2人の署名が必要）
+await program.methods
+  .setMultisig(2, [signer1PublicKey, signer2PublicKey])
+  .accounts({
+    vault: vaultPDA,
+    owner: ownerKeypair.publicKey,
+  })
+  .signers([ownerKeypair])
+  .rpc();
+
+// 多重署名モードでの引き出し申請
+// これはトランザクションを実行せず、保留中のトランザクションを作成します
+await program.methods
+  .withdraw(new BN(500000))
+  .accounts({
+    // 必要なアカウント情報
+  })
+  .signers([ownerKeypair])
+  .rpc();
+
+// 別の署名者がトランザクションを承認
+// 必要な署名数に達すると実際の引き出しが実行されます
+await program.methods
+  .approveTransaction(new BN(0)) // トランザクションID
+  .accounts({
+    vault: vaultPDA,
+    vaultTokenAccount: vaultTokenAccount.publicKey,
+    destinationTokenAccount: userTokenAccount,
+    signer: signer1PublicKey,
+    tokenProgram: TOKEN_PROGRAM_ID,
+  })
+  .signers([signer1Keypair])
+  .rpc();
+
+// 通常モードでのトークン引き出し（タイムロック期間終了後のみ可能、所有者または委任者が実行可能）
 await program.methods
   .withdraw(new BN(500000))
   .accounts({
