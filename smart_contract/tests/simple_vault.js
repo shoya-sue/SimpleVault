@@ -14,9 +14,11 @@ describe("simple_vault", () => {
   const delegateKeypair = anchor.web3.Keypair.generate(); // 委任先のキーペア
   const multisigSigner1 = anchor.web3.Keypair.generate(); // 多重署名者1
   const multisigSigner2 = anchor.web3.Keypair.generate(); // 多重署名者2
+  const newOwnerKeypair = anchor.web3.Keypair.generate(); // 新しい所有者のキーペア
   let userTokenAccount;
   let delegateTokenAccount; // 委任先のトークンアカウント
   let multisigSigner1TokenAccount; // 多重署名者1のトークンアカウント
+  let newOwnerTokenAccount; // 新しい所有者のトークンアカウント
   let vaultTokenAccount;
   let vaultPDA;
   let vaultBump;
@@ -29,11 +31,12 @@ describe("simple_vault", () => {
   const exceedingAmount = new anchor.BN(300000); // 制限を超える額
 
   before(async () => {
-    // Airdrop SOL to owner, delegate, and multisig signers
+    // Airdrop SOL to owner, delegate, multisig signers, and new owner
     await provider.connection.requestAirdrop(ownerKeypair.publicKey, 10 * anchor.web3.LAMPORTS_PER_SOL);
     await provider.connection.requestAirdrop(delegateKeypair.publicKey, 10 * anchor.web3.LAMPORTS_PER_SOL);
     await provider.connection.requestAirdrop(multisigSigner1.publicKey, 10 * anchor.web3.LAMPORTS_PER_SOL);
     await provider.connection.requestAirdrop(multisigSigner2.publicKey, 10 * anchor.web3.LAMPORTS_PER_SOL);
+    await provider.connection.requestAirdrop(newOwnerKeypair.publicKey, 10 * anchor.web3.LAMPORTS_PER_SOL);
 
     // Create new mint
     const mint = await createMint(
@@ -65,6 +68,13 @@ describe("simple_vault", () => {
       provider.wallet.payer,
       mint,
       multisigSigner1.publicKey
+    );
+
+    newOwnerTokenAccount = await createAccount(
+      provider.connection,
+      provider.wallet.payer,
+      mint,
+      newOwnerKeypair.publicKey
     );
 
     // Mint tokens to user
@@ -115,6 +125,7 @@ describe("simple_vault", () => {
     assert.equal(vaultAccount.multisigSigners.length, 0); // 初期状態では追加の署名者なし
     assert.equal(vaultAccount.pendingTransactions.length, 0); // 初期状態では保留中のトランザクションなし
     assert.equal(vaultAccount.maxWithdrawalLimit.toString(), new anchor.BN(2).pow(new anchor.BN(64)).sub(new anchor.BN(1)).toString()); // 初期状態では制限なし
+    assert.equal(vaultAccount.transferOwnershipTo, null); // 初期状態では所有権譲渡先なし
   });
 
   it("Deposits tokens to the vault", async () => {
@@ -469,5 +480,163 @@ describe("simple_vault", () => {
       withdrawalLimit.toNumber(),
       "Vault balance should decrease by withdraw amount"
     );
+  });
+
+  it("Initiates ownership transfer", async () => {
+    // Reset multisig to single signature for simplicity
+    await program.methods
+      .setMultisig(1, [])
+      .accounts({
+        vault: vaultPDA,
+        owner: ownerKeypair.publicKey,
+      })
+      .signers([ownerKeypair])
+      .rpc();
+
+    // Initiate ownership transfer
+    await program.methods
+      .initiateOwnershipTransfer(newOwnerKeypair.publicKey)
+      .accounts({
+        vault: vaultPDA,
+        owner: ownerKeypair.publicKey,
+      })
+      .signers([ownerKeypair])
+      .rpc();
+    
+    // Verify pending ownership transfer
+    const vaultAccount = await program.account.vault.fetch(vaultPDA);
+    assert(vaultAccount.transferOwnershipTo !== null, "Should have pending ownership transfer");
+    assert.equal(
+      vaultAccount.transferOwnershipTo.toString(),
+      newOwnerKeypair.publicKey.toString(),
+      "Pending owner should match"
+    );
+  });
+
+  it("Cannot accept ownership if not the intended new owner", async () => {
+    try {
+      await program.methods
+        .acceptOwnership()
+        .accounts({
+          vault: vaultPDA,
+          newOwner: delegateKeypair.publicKey,
+        })
+        .signers([delegateKeypair])
+        .rpc();
+      
+      assert.fail("Should have thrown an error due to unauthorized access");
+    } catch (error) {
+      assert(error.toString().includes("Unauthorized"), "Expected Unauthorized error");
+    }
+  });
+
+  it("New owner can accept ownership", async () => {
+    await program.methods
+      .acceptOwnership()
+      .accounts({
+        vault: vaultPDA,
+        newOwner: newOwnerKeypair.publicKey,
+      })
+      .signers([newOwnerKeypair])
+      .rpc();
+    
+    // Verify ownership transfer completed
+    const vaultAccount = await program.account.vault.fetch(vaultPDA);
+    assert.equal(
+      vaultAccount.owner.toString(),
+      newOwnerKeypair.publicKey.toString(),
+      "Owner should be updated to new owner"
+    );
+    assert.equal(vaultAccount.transferOwnershipTo, null, "Pending transfer should be cleared");
+    assert.equal(vaultAccount.delegates.length, 0, "Delegates should be cleared");
+  });
+
+  it("New owner can withdraw from vault", async () => {
+    const newOwnerBalanceBefore = await provider.connection.getTokenAccountBalance(newOwnerTokenAccount);
+    const vaultBalanceBefore = await provider.connection.getTokenAccountBalance(vaultTokenAccount.publicKey);
+    
+    // New owner withdraws tokens
+    await program.methods
+      .withdraw(withdrawAmount)
+      .accounts({
+        vault: vaultPDA,
+        vaultTokenAccount: vaultTokenAccount.publicKey,
+        userTokenAccount: newOwnerTokenAccount,
+        owner: newOwnerKeypair.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .signers([newOwnerKeypair])
+      .rpc();
+
+    // Verify token balances
+    const newOwnerBalance = await provider.connection.getTokenAccountBalance(newOwnerTokenAccount);
+    const vaultBalance = await provider.connection.getTokenAccountBalance(vaultTokenAccount.publicKey);
+    
+    assert.equal(
+      Number(newOwnerBalance.value.amount) - Number(newOwnerBalanceBefore.value.amount),
+      withdrawAmount.toNumber(),
+      "New owner's balance should increase by withdraw amount"
+    );
+    assert.equal(
+      Number(vaultBalanceBefore.value.amount) - Number(vaultBalance.value.amount),
+      withdrawAmount.toNumber(),
+      "Vault balance should decrease by withdraw amount"
+    );
+  });
+
+  it("Former owner cannot withdraw from vault anymore", async () => {
+    try {
+      await program.methods
+        .withdraw(withdrawAmount)
+        .accounts({
+          vault: vaultPDA,
+          vaultTokenAccount: vaultTokenAccount.publicKey,
+          userTokenAccount: userTokenAccount,
+          owner: ownerKeypair.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .signers([ownerKeypair])
+        .rpc();
+      
+      assert.fail("Should have thrown an error due to unauthorized access");
+    } catch (error) {
+      assert(error.toString().includes("Unauthorized"), "Expected Unauthorized error");
+    }
+  });
+
+  it("New owner can initiate ownership transfer back to original owner", async () => {
+    // Initiate ownership transfer back
+    await program.methods
+      .initiateOwnershipTransfer(ownerKeypair.publicKey)
+      .accounts({
+        vault: vaultPDA,
+        owner: newOwnerKeypair.publicKey,
+      })
+      .signers([newOwnerKeypair])
+      .rpc();
+    
+    // Verify pending ownership transfer
+    const vaultAccount = await program.account.vault.fetch(vaultPDA);
+    assert(vaultAccount.transferOwnershipTo !== null, "Should have pending ownership transfer");
+    assert.equal(
+      vaultAccount.transferOwnershipTo.toString(),
+      ownerKeypair.publicKey.toString(),
+      "Pending owner should match original owner"
+    );
+  });
+
+  it("New owner can cancel ownership transfer", async () => {
+    await program.methods
+      .cancelOwnershipTransfer()
+      .accounts({
+        vault: vaultPDA,
+        owner: newOwnerKeypair.publicKey,
+      })
+      .signers([newOwnerKeypair])
+      .rpc();
+    
+    // Verify pending ownership transfer was cancelled
+    const vaultAccount = await program.account.vault.fetch(vaultPDA);
+    assert.equal(vaultAccount.transferOwnershipTo, null, "Pending transfer should be cleared");
   });
 });

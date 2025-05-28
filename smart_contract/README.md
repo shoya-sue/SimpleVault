@@ -12,6 +12,7 @@ SimpleVaultはSolanaブロックチェーン上で動作するSPLトークンの
 - **権限委任**: 金庫の所有者が他のアドレスに操作権限を委任できる機能
 - **多重署名**: 複数の署名者が承認した場合のみ引き出しを許可する機能
 - **引き出し制限**: 1回の取引で引き出せる最大金額を制限する機能
+- **所有権譲渡**: 金庫の所有権を別のアドレスに譲渡する機能
 
 ## プロジェクト構成
 
@@ -213,6 +214,39 @@ simple_vault/
 - `vault`: 金庫アカウント
 - `owner`: 金庫の所有者（署名者）
 
+### 所有権譲渡の開始 (`initiateOwnershipTransfer`)
+
+金庫の所有権を別のアドレスに譲渡する手続きを開始します。
+
+**引数**:
+- `newOwner`: 新しい所有者のアドレス
+
+**アカウント**:
+- `vault`: 金庫アカウント
+- `owner`: 現在の所有者（署名者）
+
+### 所有権譲渡の承認 (`acceptOwnership`)
+
+所有権譲渡を承認します。新しい所有者が実行する必要があります。
+
+**引数**:
+- なし
+
+**アカウント**:
+- `vault`: 金庫アカウント
+- `newOwner`: 新しい所有者（署名者）
+
+### 所有権譲渡のキャンセル (`cancelOwnershipTransfer`)
+
+進行中の所有権譲渡をキャンセルします。
+
+**引数**:
+- なし
+
+**アカウント**:
+- `vault`: 金庫アカウント
+- `owner`: 現在の所有者（署名者）
+
 ## 使用例
 
 ```javascript
@@ -292,6 +326,36 @@ await program.methods
   .signers([ownerKeypair])
   .rpc();
 
+// 所有権譲渡の開始
+await program.methods
+  .initiateOwnershipTransfer(newOwnerPublicKey)
+  .accounts({
+    vault: vaultPDA,
+    owner: ownerKeypair.publicKey,
+  })
+  .signers([ownerKeypair])
+  .rpc();
+
+// 所有権譲渡の承認（新しい所有者が実行）
+await program.methods
+  .acceptOwnership()
+  .accounts({
+    vault: vaultPDA,
+    newOwner: newOwnerKeypair.publicKey,
+  })
+  .signers([newOwnerKeypair])
+  .rpc();
+
+// 所有権譲渡のキャンセル
+await program.methods
+  .cancelOwnershipTransfer()
+  .accounts({
+    vault: vaultPDA,
+    owner: ownerKeypair.publicKey,
+  })
+  .signers([ownerKeypair])
+  .rpc();
+
 // 多重署名モードでの引き出し申請
 // これはトランザクションを実行せず、保留中のトランザクションを作成します
 await program.methods
@@ -332,6 +396,7 @@ await program.methods
 2. **権限委任**：所有者以外のアドレスにも操作権限を与えることで、柔軟なアクセス制御が可能になります。
 3. **多重署名**：複数の署名者が必要な設定により、単一アカウントの侵害に対する保護層を追加します。
 4. **引き出し制限**：1回の取引で引き出せる金額を制限することで、不正な大量引き出しのリスクを軽減します。
+5. **所有権譲渡**：金庫の所有権を二段階（開始と承認）で譲渡することで、誤送信のリスクを軽減します。
 
 ## ライセンス
 

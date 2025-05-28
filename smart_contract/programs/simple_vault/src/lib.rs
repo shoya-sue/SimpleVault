@@ -19,6 +19,7 @@ pub mod simple_vault {
         vault.multisig_signers = Vec::new(); // デフォルトでは追加の署名者なし
         vault.pending_transactions = Vec::new(); // 保留中のトランザクションなし
         vault.max_withdrawal_limit = u64::MAX; // デフォルトでは制限なし
+        vault.transfer_ownership_to = None; // 所有権譲渡先はなし
         Ok(())
     }
 
@@ -186,6 +187,16 @@ pub mod simple_vault {
                             vault.bump,
                         )?;
                     },
+                    TransactionType::TransferOwnership => {
+                        if let Some(new_owner) = tx.new_owner {
+                            // Update the owner
+                            vault.owner = new_owner;
+                            // Clear pending transfer
+                            vault.transfer_ownership_to = None;
+                            // Clear delegates as they were for the previous owner
+                            vault.delegates.clear();
+                        }
+                    },
                 }
                 
                 // Mark as executed
@@ -205,6 +216,82 @@ pub mod simple_vault {
         
         // Set the withdrawal limit
         vault.max_withdrawal_limit = limit;
+        
+        Ok(())
+    }
+
+    pub fn initiate_ownership_transfer(ctx: Context<InitiateOwnershipTransfer>, new_owner: Pubkey) -> Result<()> {
+        // Verify owner
+        let vault = &mut ctx.accounts.vault;
+        require!(vault.owner == ctx.accounts.owner.key(), VaultError::Unauthorized);
+        
+        // Set the new owner as pending
+        vault.transfer_ownership_to = Some(new_owner);
+        
+        // If multisig is enabled, create a pending transaction
+        if vault.multisig_threshold > 1 {
+            let current_timestamp = Clock::get()?.unix_timestamp as u64;
+            let tx_id = vault.pending_transactions.len() as u64;
+            
+            // Create pending transaction
+            let pending_tx = PendingTransaction {
+                id: tx_id,
+                transaction_type: TransactionType::TransferOwnership,
+                amount: 0, // Not relevant for ownership transfer
+                destination: Pubkey::default(), // Not relevant for ownership transfer
+                new_owner: Some(new_owner),
+                signers: vec![ctx.accounts.owner.key()],
+                executed: false,
+                created_at: current_timestamp,
+            };
+            
+            // Add to pending transactions
+            vault.pending_transactions.push(pending_tx);
+        }
+        
+        Ok(())
+    }
+
+    pub fn accept_ownership(ctx: Context<AcceptOwnership>) -> Result<()> {
+        let vault = &mut ctx.accounts.vault;
+        
+        // Verify that the new owner is the one accepting
+        match vault.transfer_ownership_to {
+            Some(pending_owner) => {
+                require!(pending_owner == ctx.accounts.new_owner.key(), VaultError::Unauthorized);
+                
+                // If multisig is not enabled, transfer ownership immediately
+                if vault.multisig_threshold <= 1 {
+                    // Update the owner
+                    vault.owner = pending_owner;
+                    // Clear pending transfer
+                    vault.transfer_ownership_to = None;
+                    // Clear delegates as they were for the previous owner
+                    vault.delegates.clear();
+                }
+                
+                Ok(())
+            },
+            None => Err(VaultError::NoOwnershipTransferPending.into()),
+        }
+    }
+
+    pub fn cancel_ownership_transfer(ctx: Context<CancelOwnershipTransfer>) -> Result<()> {
+        let vault = &mut ctx.accounts.vault;
+        
+        // Verify owner
+        require!(vault.owner == ctx.accounts.owner.key(), VaultError::Unauthorized);
+        
+        // Check if there's a pending transfer
+        require!(vault.transfer_ownership_to.is_some(), VaultError::NoOwnershipTransferPending);
+        
+        // Clear pending transfer
+        vault.transfer_ownership_to = None;
+        
+        // Remove any pending ownership transfer transactions
+        vault.pending_transactions.retain(|tx| 
+            tx.transaction_type != TransactionType::TransferOwnership || tx.executed
+        );
         
         Ok(())
     }
@@ -247,7 +334,7 @@ pub struct Initialize<'info> {
     #[account(
         init,
         payer = owner,
-        space = 8 + 32 + 32 + 1 + 8 + 4 + (10 * 32) + 1 + 4 + (5 * 32) + 4 + (10 * (8 + 1 + 8 + 32 + 4 + (5 * 32) + 1 + 8)) + 8, // Added space for withdrawal limit
+        space = 8 + 32 + 32 + 1 + 8 + 4 + (10 * 32) + 1 + 4 + (5 * 32) + 4 + (10 * (8 + 1 + 8 + 32 + 4 + (5 * 32) + 1 + 8 + 1 + 32)) + 8 + 33, // Added space for ownership transfer
         seeds = [b"vault", owner.key().as_ref()],
         bump
     )]
@@ -384,6 +471,45 @@ pub struct SetWithdrawalLimit<'info> {
 }
 
 #[derive(Accounts)]
+pub struct InitiateOwnershipTransfer<'info> {
+    #[account(
+        mut,
+        seeds = [b"vault", owner.key().as_ref()],
+        bump = vault.bump,
+    )]
+    pub vault: Account<'info, Vault>,
+    
+    #[account(mut)]
+    pub owner: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct AcceptOwnership<'info> {
+    #[account(
+        mut,
+        seeds = [b"vault", vault.owner.as_ref()],
+        bump = vault.bump,
+    )]
+    pub vault: Account<'info, Vault>,
+    
+    #[account(mut)]
+    pub new_owner: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct CancelOwnershipTransfer<'info> {
+    #[account(
+        mut,
+        seeds = [b"vault", owner.key().as_ref()],
+        bump = vault.bump,
+    )]
+    pub vault: Account<'info, Vault>,
+    
+    #[account(mut)]
+    pub owner: Signer<'info>,
+}
+
+#[derive(Accounts)]
 pub struct ApproveTransaction<'info> {
     #[account(
         mut,
@@ -418,6 +544,7 @@ pub struct Vault {
     pub multisig_signers: Vec<Pubkey>, // 追加の署名者リスト（所有者は含まない）
     pub pending_transactions: Vec<PendingTransaction>, // 保留中のトランザクション
     pub max_withdrawal_limit: u64, // 最大引き出し可能金額
+    pub transfer_ownership_to: Option<Pubkey>, // 所有権譲渡先
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
@@ -426,6 +553,7 @@ pub struct PendingTransaction {
     pub transaction_type: TransactionType,
     pub amount: u64,
     pub destination: Pubkey,
+    pub new_owner: Option<Pubkey>, // 所有権譲渡先（TransferOwnershipの場合のみ使用）
     pub signers: Vec<Pubkey>,
     pub executed: bool,
     pub created_at: u64,
@@ -434,6 +562,7 @@ pub struct PendingTransaction {
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq)]
 pub enum TransactionType {
     Withdraw,
+    TransferOwnership,
 }
 
 #[error_code]
@@ -448,4 +577,6 @@ pub enum VaultError {
     TransactionNotFound,
     #[msg("Withdrawal amount exceeds the limit")]
     ExceedsWithdrawalLimit,
+    #[msg("No ownership transfer is pending")]
+    NoOwnershipTransferPending,
 }
