@@ -3,7 +3,7 @@ import { clusterApiUrl } from '@solana/web3.js';
 /**
  * プログラムID (スマートコントラクトのアドレス)
  */
-export const PROGRAM_ID = 'GGCcGkcUoT1oCbPxkHrxpHDkLDrb9TYN8Hx2ffAEYLaQ'; // デプロイされたプログラムID
+export const PROGRAM_ID = 'HLQtzTsQyzFgueH4dK3kgL3BZyE7Ts6S7VqCEXUDMcCz'; // デプロイされたプログラムID
 
 /**
  * クラスタURL (Solanaネットワーク)

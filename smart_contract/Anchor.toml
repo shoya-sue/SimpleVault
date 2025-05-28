@@ -10,10 +10,10 @@ skip-local-validator = true
 build-without-docker = true
 
 [programs.localnet]
-simple_vault = "GGCcGkcUoT1oCbPxkHrxpHDkLDrb9TYN8Hx2ffAEYLaQ"
+simple_vault = "HLQtzTsQyzFgueH4dK3kgL3BZyE7Ts6S7VqCEXUDMcCz"
 
 [programs.devnet]
-simple_vault = "GGCcGkcUoT1oCbPxkHrxpHDkLDrb9TYN8Hx2ffAEYLaQ"
+simple_vault = "HLQtzTsQyzFgueH4dK3kgL3BZyE7Ts6S7VqCEXUDMcCz"
 
 [registry]
 url = "https://api.apr.dev"
