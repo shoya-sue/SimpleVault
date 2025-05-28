@@ -13,7 +13,7 @@ pub mod simple_vault {
         let vault = &mut ctx.accounts.vault;
         vault.owner = ctx.accounts.owner.key();
         vault.token_account = ctx.accounts.vault_token_account.key();
-        vault.bump = *ctx.bumps.get("vault").unwrap();
+        vault.bump = ctx.bumps.vault;
         vault.lock_until = 0; // デフォルトではロックなし
         vault.delegates = Vec::new(); // デフォルトでは委任なし
         vault.multisig_threshold = 1; // デフォルトでは単一署名
@@ -65,6 +65,7 @@ pub mod simple_vault {
                 transaction_type: TransactionType::Withdraw,
                 amount,
                 destination: ctx.accounts.user_token_account.key(),
+                new_owner: None,
                 signers: vec![ctx.accounts.owner.key()],
                 executed: false,
                 created_at: current_timestamp,
@@ -84,7 +85,7 @@ pub mod simple_vault {
             ctx.accounts.user_token_account.to_account_info(),
             ctx.accounts.token_program.to_account_info(),
             amount,
-            vault.bump,
+            ctx.accounts.vault.bump,
         )?;
         
         Ok(())
@@ -164,44 +165,56 @@ pub mod simple_vault {
         
         // Find the pending transaction
         if let Some(tx_index) = vault.pending_transactions.iter().position(|tx| tx.id == tx_id && !tx.executed) {
-            let tx = &mut vault.pending_transactions[tx_index];
-            
-            // Check if signer has already signed
-            if !tx.signers.contains(&current_signer) {
-                tx.signers.push(current_signer);
+            // Add the signer if not already added
+            if !vault.pending_transactions[tx_index].signers.contains(&current_signer) {
+                vault.pending_transactions[tx_index].signers.push(current_signer);
             }
             
             // Check if we have enough signatures
-            if tx.signers.len() as u8 >= vault.multisig_threshold {
-                // Execute the transaction based on its type
-                match tx.transaction_type {
+            let has_enough_signatures = vault.pending_transactions[tx_index].signers.len() as u8 >= vault.multisig_threshold;
+            let transaction_type = vault.pending_transactions[tx_index].transaction_type;
+            
+            if has_enough_signatures {
+                match transaction_type {
                     TransactionType::Withdraw => {
+                        // Get the required values before modifying the transaction
+                        let amount = vault.pending_transactions[tx_index].amount;
+                        let max_limit = vault.max_withdrawal_limit;
+                        let bump = vault.bump;
+
                         // Check withdrawal limit
-                        require!(tx.amount <= vault.max_withdrawal_limit, VaultError::ExceedsWithdrawalLimit);
+                        require!(amount <= max_limit, VaultError::ExceedsWithdrawalLimit);
+
+                        // Drop mutable reference to vault before calling execute_withdraw
+                        drop(vault);
 
                         execute_withdraw(
                             ctx.accounts.vault.to_account_info(),
                             ctx.accounts.vault_token_account.to_account_info(),
                             ctx.accounts.destination_token_account.to_account_info(),
                             ctx.accounts.token_program.to_account_info(),
-                            tx.amount,
-                            vault.bump,
+                            amount,
+                            bump,
                         )?;
+                        
+                        // Get vault reference again
+                        let vault = &mut ctx.accounts.vault;
+                        vault.pending_transactions[tx_index].executed = true;
                     },
                     TransactionType::TransferOwnership => {
-                        if let Some(new_owner) = tx.new_owner {
+                        // Get the new owner before modifying the transaction
+                        if let Some(new_owner) = vault.pending_transactions[tx_index].new_owner {
                             // Update the owner
                             vault.owner = new_owner;
                             // Clear pending transfer
                             vault.transfer_ownership_to = None;
                             // Clear delegates as they were for the previous owner
                             vault.delegates.clear();
+                            // Mark as executed
+                            vault.pending_transactions[tx_index].executed = true;
                         }
                     },
                 }
-                
-                // Mark as executed
-                tx.executed = true;
             }
         } else {
             return Err(VaultError::TransactionNotFound.into());
@@ -560,7 +573,7 @@ pub struct PendingTransaction {
     pub created_at: u64,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Copy)]
 pub enum TransactionType {
     Withdraw,
     TransferOwnership,
