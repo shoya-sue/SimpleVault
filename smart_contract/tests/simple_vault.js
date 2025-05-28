@@ -25,6 +25,8 @@ describe("simple_vault", () => {
   const withdrawAmount = new anchor.BN(200000);
   const lockDuration = new anchor.BN(10); // 10秒間のロック
   const multisigWithdrawAmount = new anchor.BN(300000);
+  const withdrawalLimit = new anchor.BN(250000); // 最大引き出し額の制限
+  const exceedingAmount = new anchor.BN(300000); // 制限を超える額
 
   before(async () => {
     // Airdrop SOL to owner, delegate, and multisig signers
@@ -112,6 +114,7 @@ describe("simple_vault", () => {
     assert.equal(vaultAccount.multisigThreshold, 1); // 初期状態では単一署名
     assert.equal(vaultAccount.multisigSigners.length, 0); // 初期状態では追加の署名者なし
     assert.equal(vaultAccount.pendingTransactions.length, 0); // 初期状態では保留中のトランザクションなし
+    assert.equal(vaultAccount.maxWithdrawalLimit.toString(), new anchor.BN(2).pow(new anchor.BN(64)).sub(new anchor.BN(1)).toString()); // 初期状態では制限なし
   });
 
   it("Deposits tokens to the vault", async () => {
@@ -396,6 +399,74 @@ describe("simple_vault", () => {
     assert.equal(
       Number(vaultBalanceBefore.value.amount) - Number(vaultBalance.value.amount),
       multisigWithdrawAmount.toNumber(),
+      "Vault balance should decrease by withdraw amount"
+    );
+  });
+
+  it("Sets a withdrawal limit", async () => {
+    // Set a withdrawal limit
+    await program.methods
+      .setWithdrawalLimit(withdrawalLimit)
+      .accounts({
+        vault: vaultPDA,
+        owner: ownerKeypair.publicKey,
+      })
+      .signers([ownerKeypair])
+      .rpc();
+    
+    // Verify withdrawal limit was set
+    const vaultAccount = await program.account.vault.fetch(vaultPDA);
+    assert.equal(vaultAccount.maxWithdrawalLimit.toNumber(), withdrawalLimit.toNumber(), "Withdrawal limit should be set");
+  });
+
+  it("Cannot withdraw more than the limit", async () => {
+    try {
+      await program.methods
+        .withdraw(exceedingAmount)
+        .accounts({
+          vault: vaultPDA,
+          vaultTokenAccount: vaultTokenAccount.publicKey,
+          userTokenAccount: userTokenAccount,
+          owner: ownerKeypair.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .signers([ownerKeypair])
+        .rpc();
+      
+      assert.fail("Should have thrown an error due to exceeding withdrawal limit");
+    } catch (error) {
+      assert(error.toString().includes("ExceedsWithdrawalLimit"), "Expected ExceedsWithdrawalLimit error");
+    }
+  });
+
+  it("Can withdraw up to the limit", async () => {
+    const userBalanceBefore = await provider.connection.getTokenAccountBalance(userTokenAccount);
+    const vaultBalanceBefore = await provider.connection.getTokenAccountBalance(vaultTokenAccount.publicKey);
+    
+    await program.methods
+      .withdraw(withdrawalLimit)
+      .accounts({
+        vault: vaultPDA,
+        vaultTokenAccount: vaultTokenAccount.publicKey,
+        userTokenAccount: userTokenAccount,
+        owner: ownerKeypair.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .signers([ownerKeypair])
+      .rpc();
+
+    // Verify token balances
+    const userBalance = await provider.connection.getTokenAccountBalance(userTokenAccount);
+    const vaultBalance = await provider.connection.getTokenAccountBalance(vaultTokenAccount.publicKey);
+    
+    assert.equal(
+      Number(userBalance.value.amount) - Number(userBalanceBefore.value.amount),
+      withdrawalLimit.toNumber(),
+      "User balance should increase by withdraw amount"
+    );
+    assert.equal(
+      Number(vaultBalanceBefore.value.amount) - Number(vaultBalance.value.amount),
+      withdrawalLimit.toNumber(),
       "Vault balance should decrease by withdraw amount"
     );
   });

@@ -18,6 +18,7 @@ pub mod simple_vault {
         vault.multisig_threshold = 1; // デフォルトでは単一署名
         vault.multisig_signers = Vec::new(); // デフォルトでは追加の署名者なし
         vault.pending_transactions = Vec::new(); // 保留中のトランザクションなし
+        vault.max_withdrawal_limit = u64::MAX; // デフォルトでは制限なし
         Ok(())
     }
 
@@ -46,6 +47,9 @@ pub mod simple_vault {
         // Check if the vault is locked
         let current_timestamp = Clock::get()?.unix_timestamp as u64;
         require!(current_timestamp >= vault.lock_until, VaultError::VaultLocked);
+
+        // Check withdrawal limit
+        require!(amount <= vault.max_withdrawal_limit, VaultError::ExceedsWithdrawalLimit);
 
         // Check if multisig is required (threshold > 1)
         if vault.multisig_threshold > 1 {
@@ -170,6 +174,9 @@ pub mod simple_vault {
                 // Execute the transaction based on its type
                 match tx.transaction_type {
                     TransactionType::Withdraw => {
+                        // Check withdrawal limit
+                        require!(tx.amount <= vault.max_withdrawal_limit, VaultError::ExceedsWithdrawalLimit);
+
                         execute_withdraw(
                             ctx.accounts.vault.to_account_info(),
                             ctx.accounts.vault_token_account.to_account_info(),
@@ -187,6 +194,17 @@ pub mod simple_vault {
         } else {
             return Err(VaultError::TransactionNotFound.into());
         }
+        
+        Ok(())
+    }
+
+    pub fn set_withdrawal_limit(ctx: Context<SetWithdrawalLimit>, limit: u64) -> Result<()> {
+        // Verify owner
+        let vault = &mut ctx.accounts.vault;
+        require!(vault.owner == ctx.accounts.owner.key(), VaultError::Unauthorized);
+        
+        // Set the withdrawal limit
+        vault.max_withdrawal_limit = limit;
         
         Ok(())
     }
@@ -229,7 +247,7 @@ pub struct Initialize<'info> {
     #[account(
         init,
         payer = owner,
-        space = 8 + 32 + 32 + 1 + 8 + 4 + (10 * 32) + 1 + 4 + (5 * 32) + 4 + (10 * (8 + 1 + 8 + 32 + 4 + (5 * 32) + 1 + 8)), // Added space for multisig and pending transactions
+        space = 8 + 32 + 32 + 1 + 8 + 4 + (10 * 32) + 1 + 4 + (5 * 32) + 4 + (10 * (8 + 1 + 8 + 32 + 4 + (5 * 32) + 1 + 8)) + 8, // Added space for withdrawal limit
         seeds = [b"vault", owner.key().as_ref()],
         bump
     )]
@@ -353,6 +371,19 @@ pub struct SetMultisig<'info> {
 }
 
 #[derive(Accounts)]
+pub struct SetWithdrawalLimit<'info> {
+    #[account(
+        mut,
+        seeds = [b"vault", owner.key().as_ref()],
+        bump = vault.bump,
+    )]
+    pub vault: Account<'info, Vault>,
+    
+    #[account(mut)]
+    pub owner: Signer<'info>,
+}
+
+#[derive(Accounts)]
 pub struct ApproveTransaction<'info> {
     #[account(
         mut,
@@ -386,6 +417,7 @@ pub struct Vault {
     pub multisig_threshold: u8, // 必要な署名者数
     pub multisig_signers: Vec<Pubkey>, // 追加の署名者リスト（所有者は含まない）
     pub pending_transactions: Vec<PendingTransaction>, // 保留中のトランザクション
+    pub max_withdrawal_limit: u64, // 最大引き出し可能金額
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
@@ -414,4 +446,6 @@ pub enum VaultError {
     InvalidThreshold,
     #[msg("Transaction not found")]
     TransactionNotFound,
+    #[msg("Withdrawal amount exceeds the limit")]
+    ExceedsWithdrawalLimit,
 }
