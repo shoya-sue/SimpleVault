@@ -16,6 +16,32 @@ interface SimpleVaultIDL {
   errors: any[];
 }
 
+// Vault状態の型定義
+interface VaultState {
+  owner: PublicKey;
+  tokenAccount: PublicKey;
+  bump: number;
+  lockUntil: anchor.BN;
+  delegates: PublicKey[];
+  multisigThreshold: number;
+  multisigSigners: PublicKey[];
+  pendingTransactions: PendingTransaction[];
+  maxWithdrawalLimit: anchor.BN;
+  transferOwnershipTo: PublicKey | null;
+}
+
+// 保留中トランザクションの型定義
+interface PendingTransaction {
+  id: anchor.BN;
+  transactionType: { withdraw?: {} } | { transferOwnership?: {} };
+  amount: anchor.BN;
+  destination: PublicKey;
+  newOwner: PublicKey | null;
+  signers: PublicKey[];
+  executed: boolean;
+  createdAt: anchor.BN;
+}
+
 export const useVault = () => {
   const { connection } = useConnection();
   const wallet = useAnchorWallet();
@@ -25,6 +51,7 @@ export const useVault = () => {
   const [balance, setBalance] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [vaultState, setVaultState] = useState<VaultState | null>(null);
   
   // ユーザーのトークンアカウントを管理するカスタムフック
   const { 
@@ -57,12 +84,13 @@ export const useVault = () => {
           );
           setVaultPDA(vaultPDA);
           
-          // トークンアカウントのPDA計算
-          const [tokenAccountPDA] = PublicKey.findProgramAddressSync(
-            [Buffer.from('token-account'), vaultPDA.toBuffer()],
-            programId
-          );
-          setVaultTokenAccount(tokenAccountPDA);
+          // Vaultのトークンアカウントを取得
+          program.account.vault.fetch(vaultPDA).then(vault => {
+            setVaultTokenAccount(vault.tokenAccount);
+            setVaultState(vault as unknown as VaultState);
+          }).catch(err => {
+            console.log("Vault not initialized yet:", err);
+          });
         }
       } catch (err) {
         console.error("Failed to initialize program:", err);
@@ -71,9 +99,21 @@ export const useVault = () => {
     }
   }, [wallet, connection]);
 
+  // Vaultアカウント状態を取得
+  const fetchVaultState = useCallback(async () => {
+    if (!program || !vaultPDA) return;
+    
+    try {
+      const vaultData = await program.account.vault.fetch(vaultPDA);
+      setVaultState(vaultData as unknown as VaultState);
+    } catch (err) {
+      console.error("Failed to fetch vault state:", err);
+    }
+  }, [program, vaultPDA]);
+
   // 残高取得関数
   const fetchBalance = useCallback(async () => {
-    if (!program || !vaultPDA) return;
+    if (!program || !vaultPDA || !vaultTokenAccount) return;
     
     setLoading(true);
     setError(null);
@@ -93,6 +133,46 @@ export const useVault = () => {
       setLoading(false);
     }
   }, [program, vaultPDA, vaultTokenAccount]);
+
+  // 初期化関数
+  const initialize = useCallback(async () => {
+    if (!program || !wallet) {
+      setError("Wallet or program not initialized");
+      return;
+    }
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const mint = new PublicKey(TEST_MINT_ADDRESS);
+      const [vaultPDA] = PublicKey.findProgramAddressSync(
+        [Buffer.from('vault'), wallet.publicKey.toBuffer()],
+        program.programId
+      );
+
+      // Vaultトークンアカウントの初期化
+      await program.methods.initialize()
+        .accounts({
+          vault: vaultPDA,
+          vaultTokenAccount: null, // Anchorが自動で作成
+          mint: mint,
+          owner: wallet.publicKey,
+          tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
+          systemProgram: anchor.web3.SystemProgram.programId,
+          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+        })
+        .rpc();
+      
+      // Vault状態を更新
+      await fetchVaultState();
+    } catch (err) {
+      console.error("Failed to initialize vault:", err);
+      setError("Failed to initialize vault: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setLoading(false);
+    }
+  }, [program, wallet, fetchVaultState]);
 
   // 預け入れ関数
   const deposit = useCallback(async (amount: number) => {
@@ -160,28 +240,323 @@ export const useVault = () => {
         })
         .rpc();
       
-      // 引き出し後に残高を更新
+      // 引き出し後に残高と状態を更新
       await fetchBalance();
+      await fetchVaultState();
     } catch (err) {
       console.error("Failed to withdraw:", err);
       setError("Failed to withdraw: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setLoading(false);
     }
-  }, [program, wallet, vaultPDA, vaultTokenAccount, getOrCreateTokenAccount, fetchBalance]);
+  }, [program, wallet, vaultPDA, vaultTokenAccount, getOrCreateTokenAccount, fetchBalance, fetchVaultState]);
 
-  // ウォレット接続時に残高を自動取得
-  useEffect(() => {
-    if (program && vaultPDA && vaultTokenAccount) {
-      fetchBalance();
+  // タイムロック設定関数
+  const setTimelock = useCallback(async (lockDuration: number) => {
+    if (!program || !wallet || !vaultPDA) {
+      setError("Wallet or program not initialized");
+      return;
     }
-  }, [program, vaultPDA, vaultTokenAccount, fetchBalance]);
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      await program.methods.setTimelock(new anchor.BN(lockDuration))
+        .accounts({
+          vault: vaultPDA,
+          owner: wallet.publicKey,
+        })
+        .rpc();
+      
+      // タイムロック設定後に状態を更新
+      await fetchVaultState();
+    } catch (err) {
+      console.error("Failed to set timelock:", err);
+      setError("Failed to set timelock: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setLoading(false);
+    }
+  }, [program, wallet, vaultPDA, fetchVaultState]);
+
+  // 委任者追加関数
+  const addDelegate = useCallback(async (delegateAddress: string) => {
+    if (!program || !wallet || !vaultPDA) {
+      setError("Wallet or program not initialized");
+      return;
+    }
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const delegatePubkey = new PublicKey(delegateAddress);
+      
+      await program.methods.addDelegate(delegatePubkey)
+        .accounts({
+          vault: vaultPDA,
+          owner: wallet.publicKey,
+        })
+        .rpc();
+      
+      // 委任者追加後に状態を更新
+      await fetchVaultState();
+    } catch (err) {
+      console.error("Failed to add delegate:", err);
+      setError("Failed to add delegate: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setLoading(false);
+    }
+  }, [program, wallet, vaultPDA, fetchVaultState]);
+
+  // 委任者削除関数
+  const removeDelegate = useCallback(async (delegateAddress: string) => {
+    if (!program || !wallet || !vaultPDA) {
+      setError("Wallet or program not initialized");
+      return;
+    }
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const delegatePubkey = new PublicKey(delegateAddress);
+      
+      await program.methods.removeDelegate(delegatePubkey)
+        .accounts({
+          vault: vaultPDA,
+          owner: wallet.publicKey,
+        })
+        .rpc();
+      
+      // 委任者削除後に状態を更新
+      await fetchVaultState();
+    } catch (err) {
+      console.error("Failed to remove delegate:", err);
+      setError("Failed to remove delegate: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setLoading(false);
+    }
+  }, [program, wallet, vaultPDA, fetchVaultState]);
+
+  // マルチシグ設定関数
+  const setMultisig = useCallback(async (threshold: number, signers: string[]) => {
+    if (!program || !wallet || !vaultPDA) {
+      setError("Wallet or program not initialized");
+      return;
+    }
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const signerPubkeys = signers.map(s => new PublicKey(s));
+      
+      await program.methods.setMultisig(threshold, signerPubkeys)
+        .accounts({
+          vault: vaultPDA,
+          owner: wallet.publicKey,
+        })
+        .rpc();
+      
+      // マルチシグ設定後に状態を更新
+      await fetchVaultState();
+    } catch (err) {
+      console.error("Failed to set multisig:", err);
+      setError("Failed to set multisig: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setLoading(false);
+    }
+  }, [program, wallet, vaultPDA, fetchVaultState]);
+
+  // 出金制限設定関数
+  const setWithdrawalLimit = useCallback(async (limit: number) => {
+    if (!program || !wallet || !vaultPDA) {
+      setError("Wallet or program not initialized");
+      return;
+    }
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      await program.methods.setWithdrawalLimit(new anchor.BN(limit))
+        .accounts({
+          vault: vaultPDA,
+          owner: wallet.publicKey,
+        })
+        .rpc();
+      
+      // 出金制限設定後に状態を更新
+      await fetchVaultState();
+    } catch (err) {
+      console.error("Failed to set withdrawal limit:", err);
+      setError("Failed to set withdrawal limit: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setLoading(false);
+    }
+  }, [program, wallet, vaultPDA, fetchVaultState]);
+
+  // トランザクション承認関数
+  const approveTransaction = useCallback(async (txId: number) => {
+    if (!program || !wallet || !vaultPDA || !vaultTokenAccount) {
+      setError("Wallet or program not initialized");
+      return;
+    }
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // トランザクションを検索
+      const tx = vaultState?.pendingTransactions.find(t => t.id.toNumber() === txId);
+      if (!tx) {
+        setError("Transaction not found");
+        return;
+      }
+      
+      // 送金先アドレスを取得
+      const destination = tx.destination;
+      
+      await program.methods.approveTransaction(new anchor.BN(txId))
+        .accounts({
+          vault: vaultPDA,
+          vaultTokenAccount: vaultTokenAccount,
+          destinationTokenAccount: destination,
+          signer: wallet.publicKey,
+          tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
+        })
+        .rpc();
+      
+      // 承認後に状態と残高を更新
+      await fetchVaultState();
+      await fetchBalance();
+    } catch (err) {
+      console.error("Failed to approve transaction:", err);
+      setError("Failed to approve transaction: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setLoading(false);
+    }
+  }, [program, wallet, vaultPDA, vaultTokenAccount, vaultState, fetchVaultState, fetchBalance]);
+
+  // 所有権移転開始関数
+  const initiateOwnershipTransfer = useCallback(async (newOwnerAddress: string) => {
+    if (!program || !wallet || !vaultPDA) {
+      setError("Wallet or program not initialized");
+      return;
+    }
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const newOwnerPubkey = new PublicKey(newOwnerAddress);
+      
+      await program.methods.initiateOwnershipTransfer(newOwnerPubkey)
+        .accounts({
+          vault: vaultPDA,
+          owner: wallet.publicKey,
+        })
+        .rpc();
+      
+      // 所有権移転開始後に状態を更新
+      await fetchVaultState();
+    } catch (err) {
+      console.error("Failed to initiate ownership transfer:", err);
+      setError("Failed to initiate ownership transfer: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setLoading(false);
+    }
+  }, [program, wallet, vaultPDA, fetchVaultState]);
+
+  // 所有権移転受諾関数
+  const acceptOwnership = useCallback(async () => {
+    if (!program || !wallet || !vaultPDA) {
+      setError("Wallet or program not initialized");
+      return;
+    }
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      await program.methods.acceptOwnership()
+        .accounts({
+          vault: vaultPDA,
+          newOwner: wallet.publicKey,
+        })
+        .rpc();
+      
+      // 所有権移転受諾後に状態を更新
+      await fetchVaultState();
+    } catch (err) {
+      console.error("Failed to accept ownership:", err);
+      setError("Failed to accept ownership: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setLoading(false);
+    }
+  }, [program, wallet, vaultPDA, fetchVaultState]);
+
+  // 所有権移転キャンセル関数
+  const cancelOwnershipTransfer = useCallback(async () => {
+    if (!program || !wallet || !vaultPDA) {
+      setError("Wallet or program not initialized");
+      return;
+    }
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      await program.methods.cancelOwnershipTransfer()
+        .accounts({
+          vault: vaultPDA,
+          owner: wallet.publicKey,
+        })
+        .rpc();
+      
+      // 所有権移転キャンセル後に状態を更新
+      await fetchVaultState();
+    } catch (err) {
+      console.error("Failed to cancel ownership transfer:", err);
+      setError("Failed to cancel ownership transfer: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setLoading(false);
+    }
+  }, [program, wallet, vaultPDA, fetchVaultState]);
+
+  // ウォレット接続時にVault状態と残高を自動取得
+  useEffect(() => {
+    if (program && vaultPDA) {
+      fetchVaultState();
+      if (vaultTokenAccount) {
+        fetchBalance();
+      }
+    }
+  }, [program, vaultPDA, vaultTokenAccount, fetchVaultState, fetchBalance]);
 
   return {
+    // 基本機能
+    initialize,
     deposit,
     withdraw,
     fetchBalance,
+    fetchVaultState,
+    
+    // 拡張機能
+    setTimelock,
+    addDelegate,
+    removeDelegate,
+    setMultisig,
+    setWithdrawalLimit,
+    approveTransaction,
+    initiateOwnershipTransfer,
+    acceptOwnership,
+    cancelOwnershipTransfer,
+    
+    // 状態
     balance,
+    vaultState,
     loading: loading || tokenAccountLoading,
     error: error || tokenAccountError,
     vaultPDA,
