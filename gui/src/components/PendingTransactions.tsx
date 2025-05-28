@@ -6,7 +6,7 @@ import LoadingIndicator from './LoadingIndicator';
  * 保留中トランザクションコンポーネント
  */
 export const PendingTransactions = () => {
-  const { approveTransaction, loading, error, vaultState } = useVault();
+  const { approveTransaction, loading, error, vaultState, isInitialized, initialize } = useVault();
 
   // 保留中のトランザクション一覧
   const pendingTransactions = vaultState?.pendingTransactions || [];
@@ -24,6 +24,11 @@ export const PendingTransactions = () => {
     await approveTransaction(txId);
   };
 
+  // 初期化ハンドラー
+  const handleInitialize = async () => {
+    await initialize();
+  };
+
   // アドレスの短縮表示
   const shortenAddress = (address: string) => {
     return `${address.slice(0, 4)}...${address.slice(-4)}`;
@@ -33,6 +38,28 @@ export const PendingTransactions = () => {
   const formatTimestamp = (timestamp: number) => {
     return new Date(timestamp * 1000).toLocaleString('ja-JP');
   };
+
+  // 未初期化の場合は初期化ボタンを表示
+  if (!isInitialized) {
+    return (
+      <div className="bg-white dark:bg-dark-card shadow rounded-lg p-6">
+        <h2 className="text-2xl font-bold text-gray-800 dark:text-dark-text mb-4">保留中トランザクション</h2>
+        <p className="text-gray-600 dark:text-gray-400 mb-4">
+          この機能を使用するには、まずVaultを初期化する必要があります。
+        </p>
+        <button
+          onClick={handleInitialize}
+          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline w-full"
+          disabled={loading}
+        >
+          {loading ? <LoadingIndicator size="sm" text="初期化中..." /> : 'Vaultを初期化'}
+        </button>
+        {error && (
+          <p className="text-red-500 text-sm mt-2">{error}</p>
+        )}
+      </div>
+    );
+  }
 
   if (activePendingTransactions.length === 0) {
     return (

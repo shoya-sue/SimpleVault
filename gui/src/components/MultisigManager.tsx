@@ -12,7 +12,7 @@ export const MultisigManager = () => {
   const [signerAddress, setSignerAddress] = useState<string>('');
   const [signers, setSigners] = useState<string[]>([]);
   const [localError, setLocalError] = useState<string | null>(null);
-  const { setMultisig, loading, error, vaultState } = useVault();
+  const { setMultisig, loading, error, vaultState, isInitialized, initialize } = useVault();
 
   // 現在のマルチシグ設定
   const currentThreshold = vaultState?.multisigThreshold || 1;
@@ -69,10 +69,37 @@ export const MultisigManager = () => {
     await setMultisig(threshold, signers);
   };
 
+  // 初期化ハンドラー
+  const handleInitialize = async () => {
+    await initialize();
+  };
+
   // アドレスの短縮表示
   const shortenAddress = (address: string) => {
     return `${address.slice(0, 4)}...${address.slice(-4)}`;
   };
+
+  // 未初期化の場合は初期化ボタンを表示
+  if (!isInitialized) {
+    return (
+      <div className="bg-white dark:bg-dark-card shadow rounded-lg p-6">
+        <h2 className="text-2xl font-bold text-gray-800 dark:text-dark-text mb-4">マルチシグ設定</h2>
+        <p className="text-gray-600 dark:text-gray-400 mb-4">
+          この機能を使用するには、まずVaultを初期化する必要があります。
+        </p>
+        <button
+          onClick={handleInitialize}
+          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline w-full"
+          disabled={loading}
+        >
+          {loading ? <LoadingIndicator size="sm" text="初期化中..." /> : 'Vaultを初期化'}
+        </button>
+        {error && (
+          <p className="text-red-500 text-sm mt-2">{error}</p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white dark:bg-dark-card shadow rounded-lg p-6">

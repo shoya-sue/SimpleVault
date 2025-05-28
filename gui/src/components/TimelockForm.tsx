@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useVault } from '../hooks/useVault';
 import ErrorMessage from './ErrorMessage';
 import LoadingIndicator from './LoadingIndicator';
@@ -9,7 +9,7 @@ import LoadingIndicator from './LoadingIndicator';
 export const TimelockForm = () => {
   const [lockDuration, setLockDuration] = useState<number>(0);
   const [localError, setLocalError] = useState<string | null>(null);
-  const { setTimelock, loading, error, vaultState } = useVault();
+  const { setTimelock, loading, error, vaultState, isInitialized, initialize } = useVault();
 
   // 現在のロック状態を表示するための計算
   const currentLockUntil = vaultState?.lockUntil?.toNumber() || 0;
@@ -38,6 +38,33 @@ export const TimelockForm = () => {
     setLocalError(null);
     await setTimelock(lockDuration);
   };
+
+  // 初期化ハンドラー
+  const handleInitialize = async () => {
+    await initialize();
+  };
+
+  // 未初期化の場合は初期化ボタンを表示
+  if (!isInitialized) {
+    return (
+      <div className="bg-white dark:bg-dark-card shadow rounded-lg p-6">
+        <h2 className="text-2xl font-bold text-gray-800 dark:text-dark-text mb-4">タイムロック設定</h2>
+        <p className="text-gray-600 dark:text-gray-400 mb-4">
+          この機能を使用するには、まずVaultを初期化する必要があります。
+        </p>
+        <button
+          onClick={handleInitialize}
+          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline w-full"
+          disabled={loading}
+        >
+          {loading ? <LoadingIndicator size="sm" text="初期化中..." /> : 'Vaultを初期化'}
+        </button>
+        {error && (
+          <p className="text-red-500 text-sm mt-2">{error}</p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white dark:bg-dark-card shadow rounded-lg p-6">
