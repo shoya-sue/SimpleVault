@@ -9,6 +9,7 @@ SimpleVaultはSolanaブロックチェーン上で動作するSPLトークンの
 - **引き出し**: SPLトークンを金庫から引き出す
 - **残高確認**: 金庫内のトークン残高を確認
 - **タイムロック**: 指定した期間、金庫からの引き出しをロックする機能
+- **権限委任**: 金庫の所有者が他のアドレスに操作権限を委任できる機能
 
 ## プロジェクト構成
 
@@ -122,13 +123,33 @@ await program.methods
   .signers([ownerKeypair])
   .rpc();
 
-// トークン引き出し（タイムロック期間終了後のみ可能）
+// 委任者の追加
+await program.methods
+  .addDelegate(delegatePublicKey)
+  .accounts({
+    vault: vaultPDA,
+    owner: ownerKeypair.publicKey,
+  })
+  .signers([ownerKeypair])
+  .rpc();
+
+// 委任者の削除
+await program.methods
+  .removeDelegate(delegatePublicKey)
+  .accounts({
+    vault: vaultPDA,
+    owner: ownerKeypair.publicKey,
+  })
+  .signers([ownerKeypair])
+  .rpc();
+
+// トークン引き出し（タイムロック期間終了後のみ可能、所有者または委任者が実行可能）
 await program.methods
   .withdraw(new BN(500000))
   .accounts({
     // 必要なアカウント情報
   })
-  .signers([ownerKeypair])
+  .signers([ownerKeypair]) // または委任者のキーペア
   .rpc();
 ```
 

@@ -11,7 +11,9 @@ describe("simple_vault", () => {
   const program = anchor.workspace.SimpleVault;
   const ownerKeypair = anchor.web3.Keypair.generate();
   const mintKeypair = anchor.web3.Keypair.generate();
+  const delegateKeypair = anchor.web3.Keypair.generate(); // 委任先のキーペア
   let userTokenAccount;
+  let delegateTokenAccount; // 委任先のトークンアカウント
   let vaultTokenAccount;
   let vaultPDA;
   let vaultBump;
@@ -21,8 +23,9 @@ describe("simple_vault", () => {
   const lockDuration = new anchor.BN(10); // 10秒間のロック
 
   before(async () => {
-    // Airdrop SOL to owner
+    // Airdrop SOL to owner and delegate
     await provider.connection.requestAirdrop(ownerKeypair.publicKey, 10 * anchor.web3.LAMPORTS_PER_SOL);
+    await provider.connection.requestAirdrop(delegateKeypair.publicKey, 10 * anchor.web3.LAMPORTS_PER_SOL);
 
     // Create new mint
     const mint = await createMint(
@@ -40,6 +43,14 @@ describe("simple_vault", () => {
       provider.wallet.payer,
       mint,
       ownerKeypair.publicKey
+    );
+
+    // Create delegate token account
+    delegateTokenAccount = await createAccount(
+      provider.connection,
+      provider.wallet.payer,
+      mint,
+      delegateKeypair.publicKey
     );
 
     // Mint tokens to user
@@ -85,6 +96,7 @@ describe("simple_vault", () => {
     assert.equal(vaultAccount.tokenAccount.toString(), vaultTokenAccount.publicKey.toString());
     assert.equal(vaultAccount.bump, vaultBump);
     assert.equal(vaultAccount.lockUntil.toNumber(), 0); // 初期状態ではロックなし
+    assert.equal(vaultAccount.delegates.length, 0); // 初期状態では委任なし
   });
 
   it("Deposits tokens to the vault", async () => {
@@ -192,5 +204,91 @@ describe("simple_vault", () => {
       Number(vaultBalanceBefore.value.amount) - Number(vaultBalance.value.amount),
       withdrawAmount.toNumber()
     );
+  });
+
+  it("Adds a delegate to the vault", async () => {
+    await program.methods
+      .addDelegate(delegateKeypair.publicKey)
+      .accounts({
+        vault: vaultPDA,
+        owner: ownerKeypair.publicKey,
+      })
+      .signers([ownerKeypair])
+      .rpc();
+
+    // Verify delegate was added
+    const vaultAccount = await program.account.vault.fetch(vaultPDA);
+    assert.equal(vaultAccount.delegates.length, 1, "Should have one delegate");
+    assert.equal(
+      vaultAccount.delegates[0].toString(),
+      delegateKeypair.publicKey.toString(),
+      "Delegate should match"
+    );
+  });
+
+  it("Delegate can withdraw from the vault", async () => {
+    const delegateBalanceBefore = await provider.connection.getTokenAccountBalance(delegateTokenAccount);
+    const vaultBalanceBefore = await provider.connection.getTokenAccountBalance(vaultTokenAccount.publicKey);
+    
+    // Delegate withdraws tokens
+    await program.methods
+      .withdraw(withdrawAmount)
+      .accounts({
+        vault: vaultPDA,
+        vaultTokenAccount: vaultTokenAccount.publicKey,
+        userTokenAccount: delegateTokenAccount,
+        owner: delegateKeypair.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .signers([delegateKeypair])
+      .rpc();
+
+    // Verify token balances
+    const delegateBalance = await provider.connection.getTokenAccountBalance(delegateTokenAccount);
+    const vaultBalance = await provider.connection.getTokenAccountBalance(vaultTokenAccount.publicKey);
+    
+    assert.equal(
+      Number(delegateBalance.value.amount) - Number(delegateBalanceBefore.value.amount),
+      withdrawAmount.toNumber()
+    );
+    assert.equal(
+      Number(vaultBalanceBefore.value.amount) - Number(vaultBalance.value.amount),
+      withdrawAmount.toNumber()
+    );
+  });
+
+  it("Removes a delegate from the vault", async () => {
+    await program.methods
+      .removeDelegate(delegateKeypair.publicKey)
+      .accounts({
+        vault: vaultPDA,
+        owner: ownerKeypair.publicKey,
+      })
+      .signers([ownerKeypair])
+      .rpc();
+
+    // Verify delegate was removed
+    const vaultAccount = await program.account.vault.fetch(vaultPDA);
+    assert.equal(vaultAccount.delegates.length, 0, "Should have no delegates");
+  });
+
+  it("Former delegate cannot withdraw after removal", async () => {
+    try {
+      await program.methods
+        .withdraw(withdrawAmount)
+        .accounts({
+          vault: vaultPDA,
+          vaultTokenAccount: vaultTokenAccount.publicKey,
+          userTokenAccount: delegateTokenAccount,
+          owner: delegateKeypair.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .signers([delegateKeypair])
+        .rpc();
+      
+      assert.fail("Should have thrown an error due to unauthorized access");
+    } catch (error) {
+      assert(error.toString().includes("Unauthorized"), "Expected Unauthorized error");
+    }
   });
 });

@@ -1,5 +1,6 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
+use std::collections::HashSet;
 
 declare_id!("GGCcGkcUoT1oCbPxkHrxpHDkLDrb9TYN8Hx2ffAEYLaQ");
 
@@ -13,6 +14,7 @@ pub mod simple_vault {
         vault.token_account = ctx.accounts.vault_token_account.key();
         vault.bump = *ctx.bumps.get("vault").unwrap();
         vault.lock_until = 0; // デフォルトではロックなし
+        vault.delegates = Vec::new(); // デフォルトでは委任なし
         Ok(())
     }
 
@@ -31,9 +33,12 @@ pub mod simple_vault {
     }
 
     pub fn withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
-        // Verify owner
+        // Verify owner or delegate
         let vault = &ctx.accounts.vault;
-        require!(vault.owner == ctx.accounts.owner.key(), VaultError::Unauthorized);
+        let is_owner = vault.owner == ctx.accounts.owner.key();
+        let is_delegate = vault.delegates.contains(&ctx.accounts.owner.key());
+        
+        require!(is_owner || is_delegate, VaultError::Unauthorized);
         
         // Check if the vault is locked
         let current_timestamp = Clock::get()?.unix_timestamp as u64;
@@ -42,7 +47,7 @@ pub mod simple_vault {
         // Transfer tokens from vault to user
         let seeds = &[
             b"vault".as_ref(),
-            ctx.accounts.owner.key.as_ref(),
+            vault.owner.as_ref(),
             &[vault.bump],
         ];
         let signer = &[&seeds[..]];
@@ -74,6 +79,33 @@ pub mod simple_vault {
         
         Ok(())
     }
+
+    pub fn add_delegate(ctx: Context<ManageDelegate>, delegate: Pubkey) -> Result<()> {
+        // Verify owner
+        let vault = &mut ctx.accounts.vault;
+        require!(vault.owner == ctx.accounts.owner.key(), VaultError::Unauthorized);
+        
+        // Check if already a delegate
+        if !vault.delegates.contains(&delegate) {
+            // Add the delegate
+            vault.delegates.push(delegate);
+        }
+        
+        Ok(())
+    }
+
+    pub fn remove_delegate(ctx: Context<ManageDelegate>, delegate: Pubkey) -> Result<()> {
+        // Verify owner
+        let vault = &mut ctx.accounts.vault;
+        require!(vault.owner == ctx.accounts.owner.key(), VaultError::Unauthorized);
+        
+        // Remove the delegate if it exists
+        if let Some(index) = vault.delegates.iter().position(|&d| d == delegate) {
+            vault.delegates.remove(index);
+        }
+        
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -81,7 +113,7 @@ pub struct Initialize<'info> {
     #[account(
         init,
         payer = owner,
-        space = 8 + 32 + 32 + 1 + 8, // Added 8 bytes for lock_until
+        space = 8 + 32 + 32 + 1 + 8 + 4 + (10 * 32), // Added space for delegates (max 10)
         seeds = [b"vault", owner.key().as_ref()],
         bump
     )]
@@ -132,7 +164,7 @@ pub struct Deposit<'info> {
 pub struct Withdraw<'info> {
     #[account(
         mut,
-        seeds = [b"vault", owner.key().as_ref()],
+        seeds = [b"vault", vault.owner.as_ref()],
         bump = vault.bump,
     )]
     pub vault: Account<'info, Vault>,
@@ -178,12 +210,26 @@ pub struct SetTimelock<'info> {
     pub owner: Signer<'info>,
 }
 
+#[derive(Accounts)]
+pub struct ManageDelegate<'info> {
+    #[account(
+        mut,
+        seeds = [b"vault", owner.key().as_ref()],
+        bump = vault.bump,
+    )]
+    pub vault: Account<'info, Vault>,
+    
+    #[account(mut)]
+    pub owner: Signer<'info>,
+}
+
 #[account]
 pub struct Vault {
     pub owner: Pubkey,
     pub token_account: Pubkey,
     pub bump: u8,
     pub lock_until: u64, // タイムロック期限のUNIXタイムスタンプ
+    pub delegates: Vec<Pubkey>, // 委任されたアドレスのリスト
 }
 
 #[error_code]
