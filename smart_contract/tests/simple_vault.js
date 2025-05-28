@@ -1,6 +1,7 @@
 const anchor = require("@coral-xyz/anchor");
 const { SystemProgram, PublicKey, Keypair } = require("@solana/web3.js");
 const { TOKEN_PROGRAM_ID, MINT_SIZE, createMint, createAccount, mintTo } = require("@solana/spl-token");
+const assert = require("assert");
 
 describe("simple_vault", () => {
   // Configure the client to use the local cluster.
@@ -17,6 +18,7 @@ describe("simple_vault", () => {
 
   const depositAmount = new anchor.BN(1000000);
   const withdrawAmount = new anchor.BN(500000);
+  const lockDuration = new anchor.BN(10); // 10秒間のロック
 
   before(async () => {
     // Airdrop SOL to owner
@@ -82,6 +84,7 @@ describe("simple_vault", () => {
     assert.equal(vaultAccount.owner.toString(), ownerKeypair.publicKey.toString());
     assert.equal(vaultAccount.tokenAccount.toString(), vaultTokenAccount.publicKey.toString());
     assert.equal(vaultAccount.bump, vaultBump);
+    assert.equal(vaultAccount.lockUntil.toNumber(), 0); // 初期状態ではロックなし
   });
 
   it("Deposits tokens to the vault", async () => {
@@ -122,7 +125,46 @@ describe("simple_vault", () => {
     assert.equal(balance.toNumber(), depositAmount.toNumber());
   });
 
-  it("Withdraws tokens from the vault", async () => {
+  it("Sets a timelock on the vault", async () => {
+    await program.methods
+      .setTimelock(lockDuration)
+      .accounts({
+        vault: vaultPDA,
+        owner: ownerKeypair.publicKey,
+      })
+      .signers([ownerKeypair])
+      .rpc();
+
+    // Verify the lock was set
+    const vaultAccount = await program.account.vault.fetch(vaultPDA);
+    assert(vaultAccount.lockUntil.toNumber() > 0, "Timelock should be set");
+  });
+
+  it("Cannot withdraw when vault is locked", async () => {
+    try {
+      await program.methods
+        .withdraw(withdrawAmount)
+        .accounts({
+          vault: vaultPDA,
+          vaultTokenAccount: vaultTokenAccount.publicKey,
+          userTokenAccount: userTokenAccount,
+          owner: ownerKeypair.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .signers([ownerKeypair])
+        .rpc();
+      
+      assert.fail("Should have thrown an error due to timelock");
+    } catch (error) {
+      assert(error.toString().includes("VaultLocked"), "Expected VaultLocked error");
+    }
+  });
+
+  it("Can withdraw after timelock expires", async () => {
+    // Wait for timelock to expire
+    console.log("Waiting for timelock to expire...");
+    await new Promise(resolve => setTimeout(resolve, lockDuration.toNumber() * 1000 + 2000)); // Duration in seconds + buffer
+
     const userBalanceBefore = await provider.connection.getTokenAccountBalance(userTokenAccount);
     const vaultBalanceBefore = await provider.connection.getTokenAccountBalance(vaultTokenAccount.publicKey);
     

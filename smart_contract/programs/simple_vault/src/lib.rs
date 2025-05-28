@@ -12,6 +12,7 @@ pub mod simple_vault {
         vault.owner = ctx.accounts.owner.key();
         vault.token_account = ctx.accounts.vault_token_account.key();
         vault.bump = *ctx.bumps.get("vault").unwrap();
+        vault.lock_until = 0; // デフォルトではロックなし
         Ok(())
     }
 
@@ -33,6 +34,10 @@ pub mod simple_vault {
         // Verify owner
         let vault = &ctx.accounts.vault;
         require!(vault.owner == ctx.accounts.owner.key(), VaultError::Unauthorized);
+        
+        // Check if the vault is locked
+        let current_timestamp = Clock::get()?.unix_timestamp as u64;
+        require!(current_timestamp >= vault.lock_until, VaultError::VaultLocked);
 
         // Transfer tokens from vault to user
         let seeds = &[
@@ -57,6 +62,18 @@ pub mod simple_vault {
     pub fn query_balance(ctx: Context<QueryBalance>) -> Result<u64> {
         Ok(ctx.accounts.token_account.amount)
     }
+
+    pub fn set_timelock(ctx: Context<SetTimelock>, lock_duration: u64) -> Result<()> {
+        // Verify owner
+        let vault = &mut ctx.accounts.vault;
+        require!(vault.owner == ctx.accounts.owner.key(), VaultError::Unauthorized);
+        
+        // Set the lock until timestamp (current time + duration)
+        let current_timestamp = Clock::get()?.unix_timestamp as u64;
+        vault.lock_until = current_timestamp + lock_duration;
+        
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -64,7 +81,7 @@ pub struct Initialize<'info> {
     #[account(
         init,
         payer = owner,
-        space = 8 + 32 + 32 + 1,
+        space = 8 + 32 + 32 + 1 + 8, // Added 8 bytes for lock_until
         seeds = [b"vault", owner.key().as_ref()],
         bump
     )]
@@ -148,15 +165,31 @@ pub struct QueryBalance<'info> {
     pub token_account: Account<'info, TokenAccount>,
 }
 
+#[derive(Accounts)]
+pub struct SetTimelock<'info> {
+    #[account(
+        mut,
+        seeds = [b"vault", owner.key().as_ref()],
+        bump = vault.bump,
+    )]
+    pub vault: Account<'info, Vault>,
+    
+    #[account(mut)]
+    pub owner: Signer<'info>,
+}
+
 #[account]
 pub struct Vault {
     pub owner: Pubkey,
     pub token_account: Pubkey,
     pub bump: u8,
+    pub lock_until: u64, // タイムロック期限のUNIXタイムスタンプ
 }
 
 #[error_code]
 pub enum VaultError {
     #[msg("Only the vault owner can perform this action")]
     Unauthorized,
+    #[msg("Vault is locked until the specified time")]
+    VaultLocked,
 }
