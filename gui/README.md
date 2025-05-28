@@ -18,6 +18,14 @@
 5. 所有権移転 - Vaultの所有権を別のアドレスに移転
 6. 保留中トランザクション管理 - マルチシグの承認待ちトランザクション管理
 
+### UI/UX機能
+1. ダークモード対応 - ユーザー設定に応じたテーマ切り替え
+2. レスポンシブデザイン - モバイルからデスクトップまで対応
+3. タブインターフェース - 基本機能と拡張機能を整理
+4. エラーハンドリング - わかりやすいエラーメッセージ表示
+5. ローディング表示 - 処理中の状態を視覚的に表示
+6. Vault初期化状態の検出 - 基本機能と拡張機能間で初期化状態を共有
+
 ## 技術スタック
 
 - React / Next.js
@@ -36,27 +44,39 @@ gui/
 ├── src/
 │   ├── components/        # UIコンポーネント
 │   │   ├── BalanceDisplay.tsx     # 残高表示
+│   │   ├── DarkModeToggle.tsx     # ダークモード切替
 │   │   ├── DelegateManager.tsx    # 委任者管理
 │   │   ├── DepositForm.tsx        # 預け入れフォーム
+│   │   ├── ErrorMessage.tsx       # エラーメッセージ
+│   │   ├── LoadingIndicator.tsx   # ローディング表示
 │   │   ├── MultisigManager.tsx    # マルチシグ設定
 │   │   ├── OwnershipTransfer.tsx  # 所有権移転
 │   │   ├── PendingTransactions.tsx # 保留中トランザクション
 │   │   ├── TimelockForm.tsx       # タイムロック設定
+│   │   ├── TokenMinter.tsx        # トークンミンター
+│   │   ├── TransactionHistory.tsx # 取引履歴
 │   │   ├── WalletConnect.tsx      # ウォレット接続
 │   │   ├── WithdrawForm.tsx       # 引き出しフォーム
 │   │   └── WithdrawalLimitSetting.tsx # 出金制限設定
 │   ├── hooks/             # カスタムフック
-│   │   └── useVault.ts    # Vaultとの連携
+│   │   ├── useDarkMode.ts         # ダークモード管理
+│   │   ├── useMediaQuery.ts       # レスポンシブ対応
+│   │   ├── useTokenAccount.ts     # トークンアカウント管理
+│   │   ├── useTokenMint.ts        # トークンミント機能
+│   │   └── useVault.ts            # Vault操作機能
 │   ├── pages/             # ページコンポーネント
-│   │   ├── _app.tsx       # アプリルート
-│   │   └── index.tsx      # ホームページ
+│   │   ├── _app.tsx              # アプリルート
+│   │   └── index.tsx             # ホームページ
 │   ├── styles/            # スタイル定義
-│   │   └── globals.css    # グローバルスタイル
+│   │   └── globals.css           # グローバルスタイル
 │   └── utils/             # ユーティリティ
-│       ├── constants.ts   # 定数定義
-│       └── idl.ts         # スマートコントラクトIDL
+│       ├── constants.ts          # 定数定義
+│       ├── format.ts             # フォーマット関数
+│       ├── idl.ts                # スマートコントラクトIDL
+│       └── validation.ts         # 入力検証
 ├── .gitignore             # Git除外設定
 ├── .npmrc                 # npm設定
+├── jest.config.js         # Jestテスト設定
 ├── next-env.d.ts          # Next.js型定義
 ├── package.json           # 依存関係定義
 ├── postcss.config.js      # PostCSS設定
@@ -82,10 +102,27 @@ gui/
 
 3. ブラウザで `http://localhost:3000` にアクセス
 
+## テスト実行
+
+1. 単体テストの実行
+   ```bash
+   npm test
+   # または
+   yarn test
+   ```
+
+2. 特定のテストファイルのみ実行
+   ```bash
+   npm test -- -t "ErrorMessage"
+   # または
+   yarn test -t "ErrorMessage"
+   ```
+
 ## 注意事項
 
 - TypeScriptの型エラーは依存関係をインストールすると解消されます
 - 開発環境では `.npmrc` ファイルの設定により依存関係の互換性問題を解決しています
+- ダークモード設定はローカルストレージに保存され、次回訪問時も維持されます
 
 ## プログラムデプロイ
 
@@ -111,3 +148,6 @@ Vaultの所有権を別のアドレスに移転する機能です。組織内で
 
 ### 保留中トランザクション
 マルチシグが有効な場合、トランザクションは実行前に保留状態となり、必要な署名者数の承認を得ると実行されます。
+
+### Vault初期化状態の共有
+基本機能タブでVaultを初期化すると、拡張機能タブでも自動的に初期化状態が共有されます。未初期化の場合は、各機能コンポーネントが初期化ボタンを表示し、初期化後に本来の機能を利用できるようになります。
