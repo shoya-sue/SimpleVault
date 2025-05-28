@@ -52,6 +52,7 @@ export const useVault = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [vaultState, setVaultState] = useState<VaultState | null>(null);
+  const [isInitialized, setIsInitialized] = useState<boolean>(false);
   
   // ユーザーのトークンアカウントを管理するカスタムフック
   const { 
@@ -88,16 +89,53 @@ export const useVault = () => {
           program.account.vault.fetch(vaultPDA).then(vault => {
             setVaultTokenAccount(vault.tokenAccount);
             setVaultState(vault as unknown as VaultState);
+            setIsInitialized(true);
+            console.log("Vault initialized:", vault);
           }).catch(err => {
-            console.log("Vault not initialized yet:", err);
+            // エラーが起きてもすぐに初期化済みと判断しない
+            console.log("Checking vault initialization status:", err);
+            
+            // Vaultトークンアカウントを別の方法で確認
+            program.provider.connection.getParsedAccountInfo(vaultPDA).then(accountInfo => {
+              if (accountInfo && accountInfo.value) {
+                console.log("Vault account exists, but might need reinitialization");
+                setIsInitialized(true);
+              } else {
+                console.log("Vault not initialized yet");
+                setIsInitialized(false);
+              }
+            }).catch(() => {
+              setIsInitialized(false);
+            });
           });
         }
       } catch (err) {
         console.error("Failed to initialize program:", err);
         setError("Failed to initialize program");
+        setIsInitialized(false);
       }
     }
   }, [wallet, connection]);
+
+  // 初期化チェック
+  const checkInitialization = useCallback(() => {
+    if (!wallet) {
+      setError("ウォレットが接続されていません");
+      return false;
+    }
+    
+    if (!program) {
+      setError("プログラムが初期化されていません");
+      return false;
+    }
+    
+    if (!isInitialized) {
+      setError("Vaultが初期化されていません。「初期化」ボタンを押してVaultを作成してください。");
+      return false;
+    }
+    
+    return true;
+  }, [wallet, program, isInitialized]);
 
   // Vaultアカウント状態を取得
   const fetchVaultState = useCallback(async () => {
@@ -106,14 +144,17 @@ export const useVault = () => {
     try {
       const vaultData = await program.account.vault.fetch(vaultPDA);
       setVaultState(vaultData as unknown as VaultState);
+      setVaultTokenAccount(vaultData.tokenAccount);
+      setIsInitialized(true);
     } catch (err) {
       console.error("Failed to fetch vault state:", err);
+      setIsInitialized(false);
     }
   }, [program, vaultPDA]);
 
   // 残高取得関数
   const fetchBalance = useCallback(async () => {
-    if (!program || !vaultPDA || !vaultTokenAccount) return;
+    if (!checkInitialization() || !vaultTokenAccount) return;
     
     setLoading(true);
     setError(null);
@@ -136,8 +177,13 @@ export const useVault = () => {
 
   // 初期化関数
   const initialize = useCallback(async () => {
-    if (!program || !wallet) {
-      setError("Wallet or program not initialized");
+    if (!wallet) {
+      setError("ウォレットが接続されていません");
+      return;
+    }
+    
+    if (!program) {
+      setError("プログラムが初期化されていません");
       return;
     }
     
@@ -166,9 +212,11 @@ export const useVault = () => {
       
       // Vault状態を更新
       await fetchVaultState();
+      setIsInitialized(true);
     } catch (err) {
       console.error("Failed to initialize vault:", err);
       setError("Failed to initialize vault: " + (err instanceof Error ? err.message : String(err)));
+      setIsInitialized(false);
     } finally {
       setLoading(false);
     }
@@ -214,10 +262,7 @@ export const useVault = () => {
 
   // 引き出し関数
   const withdraw = useCallback(async (amount: number) => {
-    if (!program || !wallet || !vaultPDA || !vaultTokenAccount) {
-      setError("Wallet or program not initialized");
-      return;
-    }
+    if (!checkInitialization() || !vaultTokenAccount) return;
     
     setLoading(true);
     setError(null);
@@ -249,7 +294,7 @@ export const useVault = () => {
     } finally {
       setLoading(false);
     }
-  }, [program, wallet, vaultPDA, vaultTokenAccount, getOrCreateTokenAccount, fetchBalance, fetchVaultState]);
+  }, [program, wallet, vaultPDA, vaultTokenAccount, getOrCreateTokenAccount, fetchBalance, fetchVaultState, checkInitialization]);
 
   // タイムロック設定関数
   const setTimelock = useCallback(async (lockDuration: number) => {
@@ -563,5 +608,6 @@ export const useVault = () => {
     vaultTokenAccount,
     userTokenAccount,
     isConnected: !!wallet,
+    isInitialized,
   };
 }; 
