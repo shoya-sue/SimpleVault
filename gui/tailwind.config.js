@@ -15,6 +15,7 @@ module.exports = {
         'dark-card': '#2d2d2d',
         'dark-border': '#3f3f3f',
         'dark-text': '#e1e1e1',
+        'dark-input': '#2d2d2d',
       },
     },
   },

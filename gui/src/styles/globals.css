@@ -22,6 +22,10 @@
   --foreground-rgb: 255, 255, 255;
   --background-start-rgb: 26, 26, 26;
   --background-end-rgb: 26, 26, 26;
+  --input-bg: 45, 45, 45;
+  --input-border: 63, 63, 63;
+  --input-text: 225, 225, 225;
+  --placeholder-text: 156, 156, 156;
 }
 
 body {
@@ -38,6 +42,26 @@ body {
 /* ダークモード時のボーダー */
 .dark .border {
   @apply border-dark-border;
+}
+
+/* ダークモード時の入力フィールド */
+.dark input,
+.dark select,
+.dark textarea {
+  @apply bg-dark-input text-dark-text border-dark-border;
+}
+
+/* ダークモード時のプレースホルダー */
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: rgb(var(--placeholder-text));
+}
+
+/* ダークモード時の無効状態 */
+.dark input:disabled,
+.dark select:disabled,
+.dark textarea:disabled {
+  @apply bg-gray-800 text-gray-500 cursor-not-allowed;
 }
 
 /* スムーズなトランジション */
