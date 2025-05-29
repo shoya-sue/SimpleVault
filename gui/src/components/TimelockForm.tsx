@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
-import { useVault } from '../hooks/useVault';
+import { useState } from 'react';
+import { useConnection, useWallet } from '@solana/wallet-adapter-react';
+import useSimpleVault from '../hooks/useSimpleVault';
 import ErrorMessage from './ErrorMessage';
 import LoadingIndicator from './LoadingIndicator';
 
@@ -7,15 +8,16 @@ import LoadingIndicator from './LoadingIndicator';
  * タイムロック設定フォームコンポーネント
  */
 export const TimelockForm = () => {
-  const [lockDuration, setLockDuration] = useState<number>(0);
-  const [localError, setLocalError] = useState<string | null>(null);
-  const { setTimelock, loading, error, vaultState, isInitialized, initialize } = useVault();
+  const { publicKey } = useWallet();
+  const { connection } = useConnection();
+  const { vaultInfo, setTimelock } = useSimpleVault({ 
+    wallet: useWallet(), 
+    connection
+  });
 
-  // 現在のロック状態を表示するための計算
-  const currentLockUntil = vaultState?.lockUntil?.toNumber() || 0;
-  const now = Math.floor(Date.now() / 1000); // 現在のUNIXタイムスタンプ（秒）
-  const isCurrentlyLocked = currentLockUntil > now;
-  const remainingLockTime = isCurrentlyLocked ? currentLockUntil - now : 0;
+  const [lockDuration, setLockDuration] = useState<number>(0);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   // 期間オプション（秒単位）
   const durationOptions = [
@@ -30,54 +32,60 @@ export const TimelockForm = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (lockDuration <= 0) {
-      setLocalError('ロック期間を選択してください');
+    if (!publicKey) {
+      setErrorMessage('ウォレットを接続してください');
+      return;
+    }
+
+    if (!vaultInfo.isInitialized) {
+      setErrorMessage('金庫が初期化されていません');
       return;
     }
     
-    setLocalError(null);
-    await setTimelock(lockDuration);
-  };
+    if (lockDuration <= 0) {
+      setErrorMessage('ロック期間を選択してください');
+      return;
+    }
+    
+    setErrorMessage(null);
+    setStatusMessage('タイムロック設定中...');
 
-  // 初期化ハンドラー
-  const handleInitialize = async () => {
-    await initialize();
+    try {
+      await setTimelock(lockDuration);
+      setStatusMessage(`タイムロックが${durationOptions.find(option => option.value === lockDuration)?.label || lockDuration + '秒'}に設定されました`);
+    } catch (err) {
+      console.error('タイムロック設定エラー:', err);
+      setErrorMessage(`タイムロックの設定に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setTimeout(() => setStatusMessage(null), 5000); // 5秒後にステータスメッセージを消す
+    }
   };
-
-  // 未初期化の場合は初期化ボタンを表示
-  if (!isInitialized) {
-    return (
-      <div className="bg-white dark:bg-dark-card shadow rounded-lg p-6">
-        <h2 className="text-2xl font-bold text-gray-800 dark:text-dark-text mb-4">タイムロック設定</h2>
-        <p className="text-gray-600 dark:text-gray-400 mb-4">
-          この機能を使用するには、まずVaultを初期化する必要があります。
-        </p>
-        <button
-          onClick={handleInitialize}
-          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline w-full"
-          disabled={loading}
-        >
-          {loading ? <LoadingIndicator size="sm" text="初期化中..." /> : 'Vaultを初期化'}
-        </button>
-        {error && (
-          <p className="text-red-500 text-sm mt-2">{error}</p>
-        )}
-      </div>
-    );
-  }
 
   return (
     <div className="bg-white dark:bg-dark-card shadow rounded-lg p-6">
       <h2 className="text-2xl font-bold text-gray-800 dark:text-dark-text mb-4">タイムロック設定</h2>
       
-      {isCurrentlyLocked && (
-        <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-100 rounded-md">
-          <p className="text-sm">
-            現在、Vaultはロックされています。<br />
-            解除まであと{Math.floor(remainingLockTime / 86400)}日
-            {Math.floor((remainingLockTime % 86400) / 3600)}時間
-            {Math.floor((remainingLockTime % 3600) / 60)}分です。
-          </p>
+      {/* エラーメッセージ */}
+      {errorMessage && (
+        <ErrorMessage
+          message={errorMessage}
+          type="error"
+          onClose={() => setErrorMessage(null)}
+        />
+      )}
+
+      {/* ステータスメッセージ */}
+      {statusMessage && (
+        <ErrorMessage
+          message={statusMessage}
+          type="success"
+          onClose={() => setStatusMessage(null)}
+        />
+      )}
+
+      {!vaultInfo.isInitialized && (
+        <div className="mb-4 p-3 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 rounded">
+          金庫が初期化されていません。まず金庫を初期化してください。
         </div>
       )}
       
@@ -90,7 +98,7 @@ export const TimelockForm = () => {
             className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 dark:text-dark-text dark:bg-dark-input leading-tight focus:outline-none focus:shadow-outline"
             value={lockDuration}
             onChange={(e) => setLockDuration(parseInt(e.target.value))}
-            disabled={loading}
+            disabled={vaultInfo.isLoading || !vaultInfo.isInitialized}
           >
             <option value="0">期間を選択...</option>
             {durationOptions.map((option) => (
@@ -101,17 +109,24 @@ export const TimelockForm = () => {
           </select>
         </div>
         
-        {(localError || error) && (
-          <ErrorMessage message={localError || error || ''} />
-        )}
-        
         <div className="flex items-center justify-between">
           <button
             type="submit"
-            className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline w-full"
-            disabled={loading}
+            className={`w-full py-2 px-4 rounded font-bold transition-colors ${
+              !publicKey || vaultInfo.isLoading || !vaultInfo.isInitialized || lockDuration <= 0
+                ? 'bg-gray-300 text-gray-500 dark:bg-gray-700 dark:text-gray-500 cursor-not-allowed'
+                : 'bg-blue-500 hover:bg-blue-700 text-white'
+            }`}
+            disabled={!publicKey || vaultInfo.isLoading || !vaultInfo.isInitialized || lockDuration <= 0}
           >
-            {loading ? <LoadingIndicator size="sm" text="処理中..." /> : 'タイムロックを設定'}
+            {vaultInfo.isLoading ? (
+              <div className="flex items-center justify-center">
+                <LoadingIndicator size="sm" color="text-white" />
+                <span className="ml-2">処理中...</span>
+              </div>
+            ) : (
+              'タイムロックを設定'
+            )}
           </button>
         </div>
       </form>
