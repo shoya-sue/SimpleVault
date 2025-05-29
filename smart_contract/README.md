@@ -596,3 +596,369 @@ await program.methods
 ## ライセンス
 
 MITライセンス
+
+## 実際の使用方法
+
+このスマートコントラクトを実際に使用するには、以下の手順に従ってください。
+
+### 1. デプロイ後のProgram IDの確認
+
+デプロイが完了したら、以下のコマンドでプログラムIDを確認できます：
+
+```bash
+solana address -k target/deploy/simple_vault-keypair.json
+```
+
+### 2. クライアントアプリケーションの作成
+
+スマートコントラクトと通信するためのクライアントアプリケーションを作成します。以下はJavaScriptを使用した基本的な例です。
+
+#### 基本的なセットアップ
+
+```javascript
+const anchor = require('@coral-xyz/anchor');
+const { BN, Program } = anchor;
+const { PublicKey, Keypair, SystemProgram } = anchor.web3;
+const { TOKEN_PROGRAM_ID, Token } = require('@solana/spl-token');
+const idl = require('./target/idl/simple_vault.json');
+
+// 接続設定
+const provider = anchor.AnchorProvider.env();
+anchor.setProvider(provider);
+
+// プログラムID（デプロイ後に実際のIDに置き換えてください）
+const programId = new PublicKey('GGCcGkcUoT1oCbPxkHrxpHDkLDrb9TYN8Hx2ffAEYLaQ');
+const program = new Program(idl, programId, provider);
+
+// ウォレット情報
+const wallet = provider.wallet;
+```
+
+### 3. 金庫の初期化
+
+まず、金庫を初期化する必要があります：
+
+```javascript
+async function initializeVault() {
+  // ミントトークンを設定（既存のトークンを使用するか、新しいトークンを作成）
+  const mint = await createMint(); // または既存のトークンミントアドレス
+  
+  // 金庫のPDAアドレス（シード: "vault", 所有者のパブリックキー）を取得
+  const [vaultPDA, vaultBump] = await PublicKey.findProgramAddress(
+    [Buffer.from("vault"), wallet.publicKey.toBuffer()],
+    program.programId
+  );
+  
+  // 金庫のトークンアカウントを作成するための空のKeypair
+  const vaultTokenAccount = Keypair.generate();
+  
+  // 金庫を初期化
+  await program.methods
+    .initialize()
+    .accounts({
+      vault: vaultPDA,
+      vaultTokenAccount: vaultTokenAccount.publicKey,
+      mint: mint,
+      owner: wallet.publicKey,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      systemProgram: SystemProgram.programId,
+      rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+    })
+    .signers([vaultTokenAccount])
+    .rpc();
+    
+  console.log('金庫が初期化されました！');
+  console.log('金庫アドレス:', vaultPDA.toString());
+  console.log('金庫トークンアカウント:', vaultTokenAccount.publicKey.toString());
+  
+  return { vaultPDA, vaultTokenAccount, mint };
+}
+
+// 必要に応じてトークンミントを作成するヘルパー関数
+async function createMint() {
+  const mint = Keypair.generate();
+  const lamports = await provider.connection.getMinimumBalanceForRentExemption(
+    Token.getMintLen()
+  );
+  
+  const tx = new anchor.web3.Transaction();
+  
+  tx.add(
+    SystemProgram.createAccount({
+      fromPubkey: wallet.publicKey,
+      newAccountPubkey: mint.publicKey,
+      space: Token.getMintLen(),
+      lamports,
+      programId: TOKEN_PROGRAM_ID,
+    }),
+    Token.createInitMintInstruction(
+      TOKEN_PROGRAM_ID,
+      mint.publicKey,
+      6, // デシマル
+      wallet.publicKey,
+      null
+    )
+  );
+  
+  await provider.sendAndConfirm(tx, [mint]);
+  console.log('新しいミントが作成されました:', mint.publicKey.toString());
+  
+  return mint.publicKey;
+}
+```
+
+### 4. トークンの預け入れ
+
+金庫にトークンを預け入れる例：
+
+```javascript
+async function depositTokens(vaultPDA, vaultTokenAccount, mint, amount) {
+  // ユーザーのトークンアカウントを取得または作成
+  const userTokenAccount = await getUserTokenAccount(mint);
+  
+  // 預け入れを実行
+  await program.methods
+    .deposit(new BN(amount))
+    .accounts({
+      vault: vaultPDA,
+      vaultTokenAccount: vaultTokenAccount,
+      userTokenAccount: userTokenAccount,
+      owner: wallet.publicKey,
+      tokenProgram: TOKEN_PROGRAM_ID,
+    })
+    .rpc();
+    
+  console.log(`${amount}トークンを金庫に預け入れました`);
+}
+
+// ユーザーのトークンアカウントを取得または作成するヘルパー関数
+async function getUserTokenAccount(mint) {
+  const userTokenAccount = await Token.getAssociatedTokenAddress(
+    ASSOCIATED_TOKEN_PROGRAM_ID,
+    TOKEN_PROGRAM_ID,
+    mint,
+    wallet.publicKey
+  );
+  
+  // アカウントが存在するかチェック
+  const accountInfo = await provider.connection.getAccountInfo(userTokenAccount);
+  
+  if (!accountInfo) {
+    // 存在しない場合は作成
+    const tx = new anchor.web3.Transaction();
+    tx.add(
+      Token.createAssociatedTokenAccountInstruction(
+        ASSOCIATED_TOKEN_PROGRAM_ID,
+        TOKEN_PROGRAM_ID,
+        mint,
+        userTokenAccount,
+        wallet.publicKey,
+        wallet.publicKey
+      )
+    );
+    await provider.sendAndConfirm(tx, []);
+  }
+  
+  return userTokenAccount;
+}
+```
+
+### 5. 残高の確認
+
+金庫内のトークン残高を確認する例：
+
+```javascript
+async function checkBalance(vaultPDA, vaultTokenAccount) {
+  const balance = await program.methods
+    .queryBalance()
+    .accounts({
+      vault: vaultPDA,
+      tokenAccount: vaultTokenAccount,
+    })
+    .view();
+    
+  console.log('金庫の残高:', balance.toString());
+  return balance;
+}
+```
+
+### 6. トークンの引き出し
+
+金庫からトークンを引き出す例：
+
+```javascript
+async function withdrawTokens(vaultPDA, vaultTokenAccount, mint, amount) {
+  // ユーザーのトークンアカウントを取得または作成
+  const userTokenAccount = await getUserTokenAccount(mint);
+  
+  // 引き出しを実行
+  await program.methods
+    .withdraw(new BN(amount))
+    .accounts({
+      vault: vaultPDA,
+      vaultTokenAccount: vaultTokenAccount,
+      userTokenAccount: userTokenAccount,
+      owner: wallet.publicKey,
+      tokenProgram: TOKEN_PROGRAM_ID,
+    })
+    .rpc();
+    
+  console.log(`${amount}トークンを金庫から引き出しました`);
+}
+```
+
+### 7. タイムロックの設定
+
+金庫にタイムロックを設定する例：
+
+```javascript
+async function setTimelock(vaultPDA, lockDuration) {
+  // タイムロック設定を実行（秒単位）
+  await program.methods
+    .setTimelock(new BN(lockDuration))
+    .accounts({
+      vault: vaultPDA,
+      owner: wallet.publicKey,
+    })
+    .rpc();
+    
+  console.log(`金庫を${lockDuration}秒間ロックしました`);
+}
+```
+
+### 8. 委任者の追加
+
+金庫に委任者を追加する例：
+
+```javascript
+async function addDelegate(vaultPDA, delegatePublicKey) {
+  // 委任者追加を実行
+  await program.methods
+    .addDelegate(delegatePublicKey)
+    .accounts({
+      vault: vaultPDA,
+      owner: wallet.publicKey,
+    })
+    .rpc();
+    
+  console.log(`${delegatePublicKey.toString()}を委任者として追加しました`);
+}
+```
+
+### 9. 多重署名の設定
+
+多重署名を設定する例：
+
+```javascript
+async function setMultisig(vaultPDA, threshold, signers) {
+  // 多重署名設定を実行
+  await program.methods
+    .setMultisig(threshold, signers)
+    .accounts({
+      vault: vaultPDA,
+      owner: wallet.publicKey,
+    })
+    .rpc();
+    
+  console.log(`多重署名設定を完了しました（閾値: ${threshold}）`);
+}
+```
+
+### 10. トランザクションの承認（多重署名の場合）
+
+多重署名モードでのトランザクション承認例：
+
+```javascript
+async function approveTransaction(vaultPDA, vaultTokenAccount, userTokenAccount, txId) {
+  // トランザクション承認を実行
+  await program.methods
+    .approveTransaction(new BN(txId))
+    .accounts({
+      vault: vaultPDA,
+      vaultTokenAccount: vaultTokenAccount,
+      destinationTokenAccount: userTokenAccount,
+      signer: wallet.publicKey,
+      tokenProgram: TOKEN_PROGRAM_ID,
+    })
+    .rpc();
+    
+  console.log(`トランザクションID ${txId} を承認しました`);
+}
+```
+
+### 使用例（メイン関数）
+
+以下は、上記の関数を組み合わせた基本的な使用例です：
+
+```javascript
+async function main() {
+  try {
+    // 1. 金庫を初期化
+    console.log("金庫を初期化中...");
+    const { vaultPDA, vaultTokenAccount, mint } = await initializeVault();
+    
+    // 2. トークンを預け入れ（1000000単位）
+    console.log("トークンを預け入れ中...");
+    await depositTokens(vaultPDA, vaultTokenAccount.publicKey, mint, 1000000);
+    
+    // 3. 残高を確認
+    console.log("残高を確認中...");
+    await checkBalance(vaultPDA, vaultTokenAccount.publicKey);
+    
+    // 4. タイムロックを設定（60秒間）
+    console.log("タイムロックを設定中...");
+    await setTimelock(vaultPDA, 60);
+    
+    // 5. 60秒後にトークンを引き出し
+    console.log("60秒後に引き出しを試みます...");
+    setTimeout(async () => {
+      try {
+        await withdrawTokens(vaultPDA, vaultTokenAccount.publicKey, mint, 500000);
+        
+        // 再度残高を確認
+        await checkBalance(vaultPDA, vaultTokenAccount.publicKey);
+      } catch (error) {
+        console.error("引き出し中にエラーが発生しました:", error);
+      }
+    }, 61000); // 61秒後に実行
+    
+  } catch (error) {
+    console.error("エラーが発生しました:", error);
+  }
+}
+
+// プログラムを実行
+main();
+```
+
+### 注意点
+
+- 実際のデプロイでは、プログラムIDを正しいものに置き換えてください。
+- 上記のコードは基本的な例であり、実際のアプリケーションではエラーハンドリングやセキュリティ対策を強化する必要があります。
+- 多重署名機能やその他の高度な機能を使用する場合は、適切なアカウント構造とフロー制御が必要です。
+- Solanaのネットワーク料金（SOL）が必要なため、テスト前に十分なSOLをウォレットに入れておいてください。
+- トークンの操作には適切な権限が必要です。特に他のユーザーのトークンを操作する場合は注意が必要です。
+
+## トラブルシューティング
+
+### よくあるエラーと解決策
+
+1. **アカウントの所有者が一致しない**
+   - エラー: `Error: 0x1000: program error: Account does not have correct owner`
+   - 解決策: アカウントが正しいプログラムによって所有されていることを確認してください。
+
+2. **残高不足**
+   - エラー: `Error: 0x1: insufficient funds`
+   - 解決策: ウォレットに十分なSOLがあることを確認してください。
+
+3. **PDAの計算が間違っている**
+   - エラー: `Error: 0x7d3: program error: A PDA was used as a signer`
+   - 解決策: PDAの導出方法が正しいことを確認し、シードとバンプを適切に使用してください。
+
+4. **タイムロックがアクティブ**
+   - エラー: `Error: custom program error: 0x1771: Vault is locked until the specified time`
+   - 解決策: タイムロック期間が終了するまで待つか、タイムロックを解除してください。
+
+5. **権限エラー**
+   - エラー: `Error: custom program error: 0x1770: Only the vault owner can perform this action`
+   - 解決策: 操作を実行するアカウントが正しい権限を持っていることを確認してください。
