@@ -9,6 +9,8 @@
 2. SPLトークンの預け入れ（Deposit）
 3. SPLトークンの引き出し（Withdraw）
 4. 残高確認（Query Balance）
+5. SPLトークンのミント（開発・テスト用）
+6. Vaultの初期化（金庫の作成）
 
 ### 拡張機能（スマートコントラクト対応）
 1. タイムロック設定 - 指定した期間までVaultをロック
@@ -55,25 +57,30 @@ gui/
 │   │   ├── TimelockForm.tsx       # タイムロック設定
 │   │   ├── TokenMinter.tsx        # トークンミンター
 │   │   ├── TransactionHistory.tsx # 取引履歴
+│   │   ├── VaultInitializer.tsx   # 金庫初期化
 │   │   ├── WalletConnect.tsx      # ウォレット接続
 │   │   ├── WithdrawForm.tsx       # 引き出しフォーム
 │   │   └── WithdrawalLimitSetting.tsx # 出金制限設定
 │   ├── hooks/             # カスタムフック
 │   │   ├── useDarkMode.ts         # ダークモード管理
 │   │   ├── useMediaQuery.ts       # レスポンシブ対応
+│   │   ├── useSimpleVault.ts      # SimpleVault操作フック
 │   │   ├── useTokenAccount.ts     # トークンアカウント管理
 │   │   ├── useTokenMint.ts        # トークンミント機能
 │   │   └── useVault.ts            # Vault操作機能
+│   ├── idl/               # Anchorプログラム定義
+│   │   └── simple_vault.json      # SimpleVaultプログラムIDL
 │   ├── pages/             # ページコンポーネント
 │   │   ├── _app.tsx              # アプリルート
 │   │   └── index.tsx             # ホームページ
 │   ├── styles/            # スタイル定義
 │   │   └── globals.css           # グローバルスタイル
 │   └── utils/             # ユーティリティ
+│       ├── anchor-client.ts      # Anchorクライアント関数
 │       ├── constants.ts          # 定数定義
 │       ├── format.ts             # フォーマット関数
-│       ├── idl.ts                # スマートコントラクトIDL
-│       └── validation.ts         # 入力検証
+│       ├── validation.ts         # 入力検証
+│       └── wallet-adapter.tsx    # ウォレットアダプタ設定
 ├── .gitignore             # Git除外設定
 ├── .npmrc                 # npm設定
 ├── jest.config.js         # Jestテスト設定
@@ -127,9 +134,23 @@ gui/
 ## プログラムデプロイ
 
 このGUIはSolana devnetにデプロイされたSimpleVaultスマートコントラクトと連携します。
-デプロイされたプログラムIDは `src/utils/constants.ts` に設定されています。
+デプロイされたプログラムIDは `src/utils/anchor-client.ts` に設定されています。
+
+```typescript
+// SimpleVaultプログラムID（デプロイ後の実際のIDに置き換える）
+export const PROGRAM_ID = new PublicKey('GGCcGkcUoT1oCbPxkHrxpHDkLDrb9TYN8Hx2ffAEYLaQ');
+```
 
 ## 新機能の使い方
+
+### SPLトークンミンター
+開発・テスト用にSPLトークンを簡単に作成できます。「トークンミントを作成」ボタンでミントアドレスを生成し、「トークンをミント」ボタンで任意の数量のトークンを発行できます。
+
+### 金庫初期化
+Vaultを使用する前に、「金庫を初期化」ボタンで金庫アカウントを作成します。この初期化は一度だけ行う必要があります。
+
+### トークンの預け入れと引き出し
+金庫を初期化した後、トークンの預け入れと引き出しが可能になります。金額を入力して「預け入れ」または「引き出し」ボタンをクリックします。
 
 ### タイムロック
 タイムロック機能では、指定した期間が経過するまでVaultからの引き出しをロックすることができます。緊急時や不正アクセス防止に役立ちます。
@@ -148,6 +169,3 @@ Vaultの所有権を別のアドレスに移転する機能です。組織内で
 
 ### 保留中トランザクション
 マルチシグが有効な場合、トランザクションは実行前に保留状態となり、必要な署名者数の承認を得ると実行されます。
-
-### Vault初期化状態の共有
-基本機能タブでVaultを初期化すると、拡張機能タブでも自動的に初期化状態が共有されます。未初期化の場合は、各機能コンポーネントが初期化ボタンを表示し、初期化後に本来の機能を利用できるようになります。
