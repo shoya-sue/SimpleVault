@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
-import { useVaultProgram } from '../hooks/useVaultProgram';
+import { PublicKey } from '@solana/web3.js';
+import useSimpleVault from '../hooks/useSimpleVault';
 import { formatSol } from '../utils/format';
 import { validateSolAmountWithBalance } from '../utils/validation';
 import ErrorMessage from './ErrorMessage';
@@ -9,10 +10,14 @@ import LoadingIndicator from './LoadingIndicator';
 /**
  * 預け入れフォームコンポーネント
  */
-export const DepositForm: React.FC = () => {
+export const DepositForm: React.FC<{ mint: PublicKey }> = ({ mint }) => {
   const { publicKey } = useWallet();
   const { connection } = useConnection();
-  const { deposit, loading } = useVaultProgram();
+  const { vaultInfo, deposit } = useSimpleVault({ 
+    wallet: useWallet(), 
+    connection,
+    mint
+  });
 
   const [amount, setAmount] = useState<string>('');
   const [balance, setBalance] = useState<number>(0);
@@ -62,8 +67,8 @@ export const DepositForm: React.FC = () => {
 
   // 預け入れ処理
   const handleDeposit = async () => {
-    if (!publicKey) {
-      setErrorMessage('ウォレットを接続してください');
+    if (!publicKey || !vaultInfo.vaultPDA || !vaultInfo.vaultTokenAccount) {
+      setErrorMessage('ウォレットを接続して金庫を初期化してください');
       return;
     }
 
@@ -78,16 +83,12 @@ export const DepositForm: React.FC = () => {
     setStatusMessage('預け入れ処理中...');
 
     try {
-      // lamportsに変換
-      const lamports = parseFloat(amount) * 1000000000;
-      const result = await deposit(lamports);
+      // トークン量に変換
+      const tokenAmount = parseFloat(amount) * 1000000; // トークンのデシマルに応じて調整
+      await deposit(tokenAmount);
       
-      if (result) {
-        setStatusMessage(`${amount} SOLの預け入れに成功しました`);
-        setAmount(''); // 入力フィールドをクリア
-      } else {
-        setErrorMessage('預け入れに失敗しました');
-      }
+      setStatusMessage(`${amount} トークンの預け入れに成功しました`);
+      setAmount(''); // 入力フィールドをクリア
     } catch (err) {
       console.error('Deposit error:', err);
       setErrorMessage(`預け入れ中にエラーが発生しました: ${err instanceof Error ? err.message : String(err)}`);
@@ -117,14 +118,14 @@ export const DepositForm: React.FC = () => {
 
   // 入力が有効かチェック
   const isInputValid = (): boolean => {
-    if (!amount || !publicKey || loading) return false;
+    if (!amount || !publicKey || vaultInfo.isLoading || !vaultInfo.isInitialized) return false;
     const validation = validateSolAmountWithBalance(amount, balance);
     return validation.isValid;
   };
 
   return (
     <div className="bg-white dark:bg-dark-card shadow-md rounded-lg p-4 sm:p-6">
-      <h2 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-dark-text mb-4">SOLを預ける</h2>
+      <h2 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-dark-text mb-4">トークンを預ける</h2>
       
       {/* エラーメッセージ */}
       {errorMessage && (
@@ -144,13 +145,19 @@ export const DepositForm: React.FC = () => {
         />
       )}
 
+      {!vaultInfo.isInitialized && (
+        <div className="mb-4 p-3 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 rounded">
+          金庫が初期化されていません。まず金庫を初期化してください。
+        </div>
+      )}
+
       <div className="mb-4">
         <div className="flex justify-between items-center mb-2">
           <label className="block text-gray-700 dark:text-gray-300 text-sm font-bold">
-            預け入れ金額 (SOL)
+            預け入れ金額 (トークン)
           </label>
           <span className="text-sm text-gray-600 dark:text-gray-400">
-            残高: {formatSol(balance)} SOL
+            金庫残高: {vaultInfo.balance} トークン
           </span>
         </div>
         <div className="flex items-center">
@@ -160,12 +167,12 @@ export const DepositForm: React.FC = () => {
             onChange={handleAmountChange}
             placeholder="0.0"
             className="shadow appearance-none border dark:border-gray-700 rounded-l w-full py-2 px-3 text-gray-700 dark:text-gray-300 dark:bg-gray-800 leading-tight focus:outline-none focus:shadow-outline"
-            disabled={!publicKey || loading}
+            disabled={!publicKey || vaultInfo.isLoading || !vaultInfo.isInitialized}
           />
           <button
             onClick={setMaxAmount}
             className="bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-r border-t border-r border-b dark:border-gray-600"
-            disabled={!publicKey || loading}
+            disabled={!publicKey || vaultInfo.isLoading || !vaultInfo.isInitialized}
           >
             最大
           </button>
@@ -181,7 +188,7 @@ export const DepositForm: React.FC = () => {
             : 'bg-solana-green hover:bg-green-600 text-white'
         }`}
       >
-        {loading ? (
+        {vaultInfo.isLoading ? (
           <div className="flex items-center justify-center">
             <LoadingIndicator size="sm" color="text-white" />
             <span className="ml-2">預け入れ中...</span>

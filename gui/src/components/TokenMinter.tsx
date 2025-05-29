@@ -4,11 +4,16 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { validateTokenAmount } from '../utils/validation';
 import ErrorMessage from './ErrorMessage';
 import LoadingIndicator from './LoadingIndicator';
+import { PublicKey } from '@solana/web3.js';
+
+interface TokenMinterProps {
+  onMintCreated?: (mintAddress: PublicKey) => void;
+}
 
 /**
  * SPLトークンミント用コンポーネント
  */
-const TokenMinter: React.FC = () => {
+const TokenMinter: React.FC<TokenMinterProps> = ({ onMintCreated }) => {
   const { publicKey } = useWallet();
   const { 
     createMint, 
@@ -89,6 +94,9 @@ const TokenMinter: React.FC = () => {
     if (result) {
       setMintCreated(true);
       setStatusMessage(`ミントが作成されました: ${result.toString()}`);
+      if (onMintCreated) {
+        onMintCreated(result);
+      }
     } else {
       if (!error) {
         setErrorMessage('ミントの作成に失敗しました');

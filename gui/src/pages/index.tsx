@@ -4,6 +4,7 @@ import { WalletConnect } from '../components/WalletConnect';
 import { BalanceDisplay } from '../components/BalanceDisplay';
 import { DepositForm } from '../components/DepositForm';
 import { WithdrawForm } from '../components/WithdrawForm';
+import { VaultInitializer } from '../components/VaultInitializer';
 import TokenMinter from '../components/TokenMinter';
 import TransactionHistory from '../components/TransactionHistory';
 import DarkModeToggle from '../components/DarkModeToggle';
@@ -16,11 +17,18 @@ import { OwnershipTransfer } from '../components/OwnershipTransfer';
 import { PendingTransactions } from '../components/PendingTransactions';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useState, useEffect } from 'react';
+import { PublicKey } from '@solana/web3.js';
 
 const Home: NextPage = () => {
   const { connected } = useWallet();
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('basic'); // 'basic' or 'advanced'
+  
+  // 使用するトークンのミントアドレス（実際の環境では動的に選択できるようにする）
+  // これはテスト用のダミーアドレスです。実際のプロジェクトでは適切なミントアドレスを設定してください。
+  const [mintAddress, setMintAddress] = useState<PublicKey>(
+    new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v') // USDC ミントアドレス
+  );
 
   // 初期ロード時のローディング処理
   useEffect(() => {
@@ -31,6 +39,11 @@ const Home: NextPage = () => {
 
     return () => clearTimeout(timer);
   }, []);
+
+  // ミントアドレスを設定するコールバック
+  const handleSetMintAddress = (address: PublicKey) => {
+    setMintAddress(address);
+  };
 
   if (isLoading) {
     return <LoadingIndicator fullScreen text="SimpleVaultを読み込み中..." />;
@@ -96,20 +109,26 @@ const Home: NextPage = () => {
               <>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto mb-10">
                   <div>
+                    <TokenMinter onMintCreated={handleSetMintAddress} />
+                  </div>
+                  <div>
+                    <VaultInitializer mint={mintAddress} />
+                  </div>
+                  <div>
                     <BalanceDisplay />
-                  </div>
-                  <div>
-                    <DepositForm />
-                  </div>
-                  <div>
-                    <WithdrawForm />
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-6xl mx-auto mb-10">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-6xl mx-auto mb-10">
                   <div>
-                    <TokenMinter />
+                    <DepositForm mint={mintAddress} />
                   </div>
+                  <div>
+                    <WithdrawForm mint={mintAddress} />
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-1 gap-6 max-w-6xl mx-auto mb-10">
                   <div>
                     <TransactionHistory />
                   </div>
