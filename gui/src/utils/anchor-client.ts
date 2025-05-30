@@ -7,9 +7,10 @@ import {
   createAssociatedTokenAccountInstruction
 } from '@solana/spl-token';
 import * as idl from '../idl/simple_vault.json';
+import { PROGRAM_ID as PROGRAM_ID_STRING } from './constants';
 
-// SimpleVaultプログラムID（デプロイ後の実際のIDに置き換える）
-export const PROGRAM_ID = new PublicKey('GGCcGkcUoT1oCbPxkHrxpHDkLDrb9TYN8Hx2ffAEYLaQ');
+// SimpleVaultプログラムID（環境変数から読み込み）
+export const PROGRAM_ID = new PublicKey(PROGRAM_ID_STRING);
 
 // Anchorクライアントを初期化
 export const getProgram = (wallet: any, connection: Connection) => {
